@@ -20,8 +20,13 @@ from typing import Any
 from .world import ACTIONS, BEST, TIMELINE, VIRAL
 
 APPVIEW = "https://api.bsky.app/xrpc"
-BINANCE = "https://api.binance.com/api/v3/ticker/24hr"
-BINANCE_PRICE = "https://api.binance.com/api/v3/ticker/price"
+# data-api.binance.vision answers from hosts where api.binance.com returns 451.
+MARKET_HOSTS = (
+    "https://data-api.binance.vision",
+    "https://api.binance.com",
+)
+BINANCE = MARKET_HOSTS[0] + "/api/v3/ticker/24hr"
+BINANCE_PRICE = MARKET_HOSTS[0] + "/api/v3/ticker/price"
 STABLES = frozenset({
     "USDC", "FDUSD", "TUSD", "DAI", "USDP", "EUR", "AEUR", "USD1",
     "USDE", "BFUSD", "USDS", "RLUSD", "XUSD", "BUSD", "USDD",
@@ -536,12 +541,25 @@ def _get_json(url: str) -> Any:
         return json.load(response)
 
 
+def _market_json(path: str) -> Any:
+    """Public ticker. Try the vision host first; api.binance.com is refused from some regions."""
+    last: Exception | None = None
+    for host in MARKET_HOSTS:
+        try:
+            return _get_json(host + path)
+        except Exception as exc:
+            last = exc
+    if last is not None:
+        raise last
+    raise RuntimeError("no market host")
+
+
 def _price_quotes(symbols: list[str] | None = None) -> dict[str, float]:
-    url = BINANCE_PRICE
+    path = "/api/v3/ticker/price"
     if symbols:
         encoded = urllib.parse.quote(json.dumps(symbols, separators=(",", ":")))
-        url = f"{BINANCE_PRICE}?symbols={encoded}"
-    payload = _get_json(url)
+        path = f"{path}?symbols={encoded}"
+    payload = _market_json(path)
     quotes: dict[str, float] = {}
     if not isinstance(payload, list):
         return quotes
@@ -667,12 +685,20 @@ class LiveFeed:
         self.loaded = False
 
     def load(self) -> None:
-        try:
-            payload = _get_json(BINANCE)
-            ordered = price_movers(payload)
-        except Exception as exc:
-            self.error = f"{type(exc).__name__}: {exc}"
+        last: Exception | None = None
+        ordered: list[dict[str, Any]] = []
+        for _attempt in range(3):
+            try:
+                ordered = price_movers(_market_json("/api/v3/ticker/24hr"))
+                last = None
+                break
+            except Exception as exc:
+                last = exc
+                time.sleep(1)
+        if last is not None:
+            self.error = f"{type(last).__name__}: {last}"
             self.loaded = True
+            self._ensure_poll()
             return
         if len(ordered) < 4:
             self.error = "not enough coins on the book"
@@ -735,8 +761,10 @@ class LiveFeed:
 
     def poll(self) -> None:
         with self._lock:
-            if not any(item.get("symbol") for item in self._board):
-                return
+            live = any(item.get("symbol") for item in self._board)
+        if not live:
+            self.load()
+            return
         try:
             quoted = _price_quotes()
         except Exception as exc:

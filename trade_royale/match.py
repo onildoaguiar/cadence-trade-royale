@@ -320,6 +320,10 @@ class League:
     def step(self) -> None:
         if self.phase != "live" or not self.lives:
             return
+        if not any(item.get("symbol") for item in self.pool):
+            fresh = self._feed_coins()
+            if any(item.get("symbol") for item in fresh):
+                self._bind_pool()
         regime = self.regime
         best = action_index(self.winners[regime])
         raw_seen = crowd_from_actions([life.last_action for life in self.lives])
