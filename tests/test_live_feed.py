@@ -2,7 +2,7 @@ import unittest
 
 from datetime import datetime, timezone
 
-from attention_royale.live_feed import (
+from trade_royale.live_feed import (
     assign_slots,
     choose_pair,
     engagement,

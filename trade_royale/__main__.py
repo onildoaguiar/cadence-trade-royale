@@ -1,6 +1,6 @@
 """Headless drill: nursery, a calm gm stretch, then the flip.
 
-    python -m attention_royale
+    python -m trade_royale
 """
 
 from __future__ import annotations

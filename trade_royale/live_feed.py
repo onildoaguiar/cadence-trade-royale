@@ -656,6 +656,9 @@ class LiveFeed:
         self._titles = {TIMELINE: "the quiet tag", VIRAL: "the growing tag"}
         self._meta: dict[str, dict[str, Any]] = {TIMELINE: {}, VIRAL: {}}
         self._board: list[dict[str, Any]] = _stand_in_board()
+        self._public_board: list[dict[str, Any]] = []
+        self._public_count = 0
+        self._refresh_public()
         self._samples: dict[str, list[dict[str, Any]]] = {name: [] for name in ACTIONS}
         self._cursor = {name: 0 for name in ACTIONS}
         self.error: str | None = None
@@ -695,6 +698,7 @@ class LiveFeed:
             })
         with self._lock:
             self._board = board
+            self._refresh_public()
         self.loaded = True
         self.error = None
         self._quote_error = None
@@ -710,10 +714,24 @@ class LiveFeed:
                     continue
                 item["open"] = last
                 item["growth"] = 0.0
+            self._refresh_public()
 
     def book(self) -> list[dict[str, Any]]:
         with self._lock:
             return [dict(item) for item in self._board]
+
+    def quotes(self) -> dict[str, float]:
+        """Latest price by symbol, without copying the whole book."""
+        with self._lock:
+            return {
+                str(item.get("symbol") or item.get("title")): float(item.get("last") or 0.0)
+                for item in self._board
+            }
+
+    def _refresh_public(self) -> None:
+        shown = visible_moves(self._board)
+        self._public_count = len(self._board)
+        self._public_board = [dict(item) for item in shown]
 
     def poll(self) -> None:
         with self._lock:
@@ -739,6 +757,7 @@ class LiveFeed:
                 item["last"] = last
                 open_px = float(item.get("open") or last)
                 item["growth"] = round((last / open_px - 1.0) * 100.0, 2)
+            self._refresh_public()
 
     def _ensure_poll(self) -> None:
         if self._thread and self._thread.is_alive():
@@ -780,15 +799,16 @@ class LiveFeed:
 
     def public(self) -> dict[str, Any]:
         with self._lock:
-            board = [dict(item) for item in self._board]
+            board = list(self._public_board)
+            count = self._public_count
         return {
             "name": "Binance",
             "url": "https://www.binance.com/en/markets",
             "status": self._feed_status(),
             "note": "Every USDT pair. Profit is the move after the round opens.",
             "error": self.error,
-            "count": len(board),
-            "board": visible_moves(board),
+            "count": count,
+            "board": board,
             "slices": {
                 regime: {
                     "winner": self._winners.get(regime),

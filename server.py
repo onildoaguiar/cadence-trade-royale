@@ -14,12 +14,13 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
 
-from attention_royale.live_feed import LiveFeed
-from attention_royale.match import League
+from trade_royale.live_feed import LiveFeed
+from trade_royale.match import League
 
 ROOT = Path(__file__).resolve().parent
 WEB = ROOT / "web"
 TICK = 0.09
+GAP = 0.05
 
 os.environ.setdefault("OMP_NUM_THREADS", "1")
 
@@ -31,12 +32,16 @@ class Pit:
         self.running = False
         self.error: str | None = None
         self._stop = False
+        self._body = b""
+        self._body_lock = threading.Lock()
 
     def boot(self) -> None:
         try:
             def on_progress(progress: dict) -> None:
                 with self.lock:
                     self.league.progress = progress
+                    payload = self._capture()
+                self._publish(payload)
 
             self.league.raise_all(on_progress)
             with self.lock:
@@ -51,16 +56,35 @@ class Pit:
             with self.lock:
                 if self.running and self.league.phase == "live":
                     self.league.step()
-            remaining = TICK - (time.perf_counter() - began)
-            if remaining > 0:
-                time.sleep(remaining)
+                payload = self._capture()
+            self._publish(payload)
+            pause = max(GAP, TICK - (time.perf_counter() - began))
+            time.sleep(pause)
+
+    def _capture(self) -> dict:
+        payload = self.league.snapshot()
+        payload["running"] = self.running
+        payload["error"] = self.error
+        return payload
+
+    def _publish(self, payload: dict) -> None:
+        body = json.dumps(payload).encode()
+        with self._body_lock:
+            self._body = body
+
+    def state_body(self) -> bytes:
+        with self._body_lock:
+            body = self._body
+        if body:
+            return body
+        with self.lock:
+            payload = self._capture()
+        self._publish(payload)
+        with self._body_lock:
+            return self._body
 
     def state(self) -> dict:
-        with self.lock:
-            payload = self.league.snapshot()
-            payload["running"] = self.running
-            payload["error"] = self.error
-            return payload
+        return json.loads(self.state_body())
 
     def command(self, cmd: str) -> dict:
         with self.lock:
@@ -76,10 +100,9 @@ class Pit:
                 self.league.new_round()
             elif cmd == "toggle":
                 self.running = not self.running
-            payload = self.league.snapshot()
-            payload["running"] = self.running
-            payload["error"] = self.error
-            return payload
+            payload = self._capture()
+        self._publish(payload)
+        return payload
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -91,7 +114,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         path = urlparse(self.path).path
         if path == "/api/state":
-            self._json(self.pit.state())
+            self._bytes(self.pit.state_body())
             return
         if path == "/":
             path = "/index.html"
@@ -126,14 +149,16 @@ class Handler(BaseHTTPRequestHandler):
             return
         self._json(self.pit.command(str(payload.get("cmd", ""))))
 
-    def _json(self, payload: dict, status: int = 200) -> None:
-        body = json.dumps(payload).encode()
+    def _bytes(self, body: bytes, status: int = 200) -> None:
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(body)
+
+    def _json(self, payload: dict, status: int = 200) -> None:
+        self._bytes(json.dumps(payload).encode(), status)
 
 
 def main() -> None:

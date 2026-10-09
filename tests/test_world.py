@@ -2,7 +2,7 @@ import unittest
 
 import numpy as np
 
-from attention_royale.world import (
+from trade_royale.world import (
     ACTIONS,
     BEST,
     INPUTS,

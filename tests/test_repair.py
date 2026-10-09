@@ -1,7 +1,7 @@
 import unittest
 
-from attention_royale.creatures import CREATURES
-from attention_royale.match import League
+from trade_royale.creatures import CREATURES
+from trade_royale.match import League
 
 
 def _mean(history: list[dict], key: str, start: int, end: int) -> float:

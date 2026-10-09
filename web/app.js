@@ -705,5 +705,9 @@ function fmt(value) {
   return number > 0 ? `+${text}` : text;
 }
 
-poll();
-setInterval(poll, 160);
+async function watch() {
+  await poll();
+  window.setTimeout(watch, 200);
+}
+
+watch();

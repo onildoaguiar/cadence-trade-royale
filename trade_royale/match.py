@@ -197,15 +197,17 @@ class League:
         """Mark each coin from the live quote. The offline stand-in still walks its printed move."""
         if len(self.prices) != len(self.pool):
             self.prices = [1.0 for _ in self.pool]
-        fresh = {
-            str(item.get("symbol") or item.get("title")): item
-            for item in self._feed_coins()
-        }
+        quote_fn = getattr(self.feed_source, "quotes", None)
+        fresh = quote_fn() if quote_fn else None
+        if fresh is None:
+            fresh = {
+                str(item.get("symbol") or item.get("title")): float(item.get("last") or 0.0)
+                for item in self._feed_coins()
+            }
         quoted = False
         for index, item in enumerate(self.pool):
             key = str(item.get("symbol") or item.get("title"))
-            quote = fresh.get(key) or {}
-            last = float(quote.get("last") or item.get("last") or 0.0)
+            last = float(fresh.get(key) or item.get("last") or 0.0)
             open_px = float(item.get("open") or 0.0)
             if open_px > 0 and last > 0:
                 item["last"] = last
@@ -489,7 +491,6 @@ class League:
             "creatures": creatures,
             "ranking": ranking,
             "feed": list(self.feed),
-            "history": list(self.history[-360:]),
             "traces": {
                 name: {
                     "rate": _spark(trace["rate"]),
