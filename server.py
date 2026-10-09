@@ -138,16 +138,17 @@ class Handler(BaseHTTPRequestHandler):
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Trending Royale")
-    parser.add_argument("--port", type=int, default=8765)
+    parser.add_argument("--host", default=os.environ.get("HOST", "127.0.0.1"))
+    parser.add_argument("--port", type=int, default=int(os.environ.get("PORT", "8765")))
     parser.add_argument("--moments", type=int, default=360)
     args = parser.parse_args()
     pit = Pit(args.moments)
     Handler.pit = pit
     threading.Thread(target=pit.boot, daemon=True).start()
     threading.Thread(target=pit.loop, daemon=True).start()
-    server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
-    print(f"Trending Royale  http://127.0.0.1:{args.port}/", flush=True)
-    print("Reading live trends, then raising six brains. The page shows that while it runs.", flush=True)
+    server = ThreadingHTTPServer((args.host, args.port), Handler)
+    print(f"Trending Royale  http://{args.host}:{args.port}/", flush=True)
+    print("Reading crypto news, then raising six brains. The page shows that while it runs.", flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

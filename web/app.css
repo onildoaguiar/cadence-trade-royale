@@ -36,7 +36,7 @@ button, input { font: inherit; color: inherit; }
   grid-template-columns: 1fr auto auto;
   gap: 24px;
   align-items: end;
-  padding: 18px 22px 14px;
+  padding: 10px 16px 8px;
   border-bottom: 1px solid var(--line);
 }
 
@@ -55,10 +55,10 @@ button, input { font: inherit; color: inherit; }
 }
 
 .lede {
-  margin: 8px 0 0;
-  max-width: 46ch;
+  margin: 4px 0 0;
+  max-width: 52ch;
   color: var(--muted);
-  font-size: 13px;
+  font-size: 12px;
   line-height: 1.45;
   letter-spacing: 0;
   text-transform: none;
@@ -68,7 +68,7 @@ h1 {
   margin: 2px 0 0;
   font-family: Syne, Georgia, sans-serif;
   font-weight: 800;
-  font-size: 34px;
+  font-size: 26px;
   letter-spacing: -0.045em;
   line-height: 0.9;
 }
@@ -76,7 +76,7 @@ h1 {
 h2 {
   margin: 0;
   font-family: Syne, Georgia, sans-serif;
-  font-size: 18px;
+  font-size: 15px;
   letter-spacing: -0.03em;
 }
 
@@ -94,7 +94,7 @@ h2 {
 .regime strong {
   display: block;
   font-family: Syne, Georgia, sans-serif;
-  font-size: 18px;
+  font-size: 15px;
   letter-spacing: -0.04em;
   line-height: 1.15;
 }
@@ -124,7 +124,7 @@ h2 {
 .clock b {
   display: block;
   font-family: Syne, Georgia, sans-serif;
-  font-size: 28px;
+  font-size: 20px;
   letter-spacing: -0.04em;
   line-height: 1;
 }
@@ -164,17 +164,17 @@ main {
   padding: 4px 16px 8px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 4px;
   overflow: auto;
   min-height: 0;
 }
 
 .ranking li {
   display: grid;
-  grid-template-columns: 36px 48px minmax(0, 1fr) auto;
-  gap: 10px;
+  grid-template-columns: 22px 28px minmax(0, 1fr) auto;
+  gap: 8px;
   align-items: start;
-  padding: 10px 12px;
+  padding: 6px 8px;
   border: 1px solid var(--line);
   background: #181510;
   text-align: left;
@@ -182,11 +182,14 @@ main {
 }
 
 .ranking li.leader { border-color: rgba(214, 255, 74, 0.7); }
-.ranking li.selected { outline: 1px solid var(--ink); }
+.ranking li.selected {
+  outline: 1px solid var(--ink);
+  background: #221e18;
+}
 
 .ranking .place {
   font-family: Syne, Georgia, sans-serif;
-  font-size: 26px;
+  font-size: 16px;
   letter-spacing: -0.04em;
   color: var(--muted);
 }
@@ -194,36 +197,72 @@ main {
 .ranking li.leader .place { color: var(--gm); }
 
 .ranking .mark {
-  width: 48px;
-  height: 48px;
+  width: 28px;
+  height: 28px;
   display: grid;
   place-items: center;
   font-family: Syne, Georgia, sans-serif;
-  font-size: 16px;
+  font-size: 11px;
 }
 
 .ranking .detail { display: block; min-width: 0; }
 
-.ranking .who { display: block; font-size: 13px; }
+.ranking .who { display: block; font-size: 12px; }
+.ranking .who em {
+  margin-left: 6px;
+  color: var(--muted);
+  font-style: normal;
+  font-size: 11px;
+}
 .ranking .trend-name {
   display: block;
-  margin-top: 3px;
-  color: var(--muted);
+  margin-top: 2px;
+  color: var(--ink);
   font-size: 12px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.ranking .trend-name em {
+  margin-left: 8px;
+  color: var(--frozen);
+  font-style: normal;
+}
 .ranking .trend-name.on { color: var(--gm); }
 
 .ranking .lesson {
   display: block;
-  margin-top: 4px;
+  margin-top: 3px;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 11px;
   line-height: 1.35;
   letter-spacing: 0;
   text-transform: none;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin-top: 4px;
+}
+
+.chips span {
+  max-width: 22ch;
+  padding: 1px 5px;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 10px;
+  letter-spacing: 0;
+  text-transform: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chips span.hot {
+  color: var(--gm);
+  border-color: rgba(214, 255, 74, 0.45);
 }
 
 .ranking .mixbar {
@@ -237,19 +276,21 @@ main {
 
 .ranking .twin-line {
   display: block;
-  margin-top: 6px;
+  margin-top: 3px;
   color: var(--frozen);
-  font-size: 11px;
+  font-size: 10px;
   letter-spacing: 0;
   text-transform: none;
 }
 
 .ranking .score {
   font-family: Syne, Georgia, sans-serif;
-  font-size: 22px;
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
   letter-spacing: -0.04em;
   text-align: right;
-  padding-top: 4px;
+  padding-top: 2px;
+  min-width: 7ch;
 }
 .ranking .bar {
   display: block;
@@ -278,7 +319,7 @@ main {
 }
 
 .trends li {
-  padding: 12px 0;
+  padding: 7px 0;
   border-bottom: 1px solid var(--line);
 }
 
@@ -289,7 +330,7 @@ main {
   justify-content: space-between;
   gap: 8px;
   align-items: baseline;
-  font-size: 14px;
+  font-size: 12px;
 }
 
 .trend-title b { font-weight: 600; }
@@ -309,7 +350,7 @@ main {
   font-size: 12px;
   line-height: 1.4;
   display: -webkit-box;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 1;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
@@ -449,7 +490,7 @@ main {
 }
 
 .how {
-  padding: 14px 16px 8px;
+  padding: 8px 12px 6px;
   border-bottom: 1px solid var(--line);
 }
 
@@ -465,7 +506,7 @@ main {
 }
 
 .how li {
-  font-size: 13px;
+  font-size: 12px;
   line-height: 1.4;
 }
 
@@ -478,7 +519,7 @@ main {
 
 .feed-head {
   display: block;
-  padding: 14px 16px 8px;
+  padding: 8px 12px 4px;
 }
 
 .feed-head p {
@@ -489,6 +530,7 @@ main {
   line-height: 1.4;
   font-size: 12px;
 }
+.feed-head p:empty { display: none; }
 
 .feed {
   list-style: none;
@@ -572,7 +614,7 @@ footer {
 button {
   background: transparent;
   border: 1px solid var(--line);
-  padding: 10px 12px;
+  padding: 7px 10px;
   cursor: pointer;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -610,7 +652,8 @@ body:has(.pit.viral) button.flip {
 }
 .scores b {
   font-family: Syne, Georgia, sans-serif;
-  font-size: 22px;
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
   letter-spacing: -0.04em;
 }
 
@@ -618,7 +661,50 @@ body:has(.pit.viral) button.flip {
   min-height: 74px;
   border-left: 1px solid var(--line);
   padding-left: 16px;
+  display: flex;
+  align-items: center;
+  gap: 18px;
 }
+
+.brain {
+  display: grid;
+  grid-template-columns: repeat(8, 8px);
+  gap: 3px;
+  flex: none;
+}
+
+.brain i {
+  display: block;
+  width: 8px;
+  height: 8px;
+  border-radius: 1px;
+}
+
+.motors {
+  display: flex;
+  gap: 10px;
+  flex: none;
+}
+
+.motors span {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.motors i {
+  display: block;
+  width: 22px;
+  height: 8px;
+  border-radius: 1px;
+}
+
+.motors .on { color: var(--ink); }
 
 .inspector-empty { margin: 0; color: var(--muted); font-size: 12px; }
 

@@ -9,7 +9,12 @@ from attention_royale.live_feed import (
     feed_uri,
     growth_per_hour,
     kind_of,
+    list_points,
+    news_stories,
+    quiet_list,
     rank,
+    revise_list,
+    starting_list,
 )
 
 
@@ -111,6 +116,62 @@ class TrendPairTest(unittest.TestCase):
         ])
         self.assertEqual(slots["post"]["title"], "b")
         self.assertEqual(slots["reply"]["title"], "c")
+
+    def test_a_brain_swaps_a_quiet_list_toward_hotter_trends(self) -> None:
+        pool = [{"title": name, "growth": growth} for name, growth in (
+            ("hot", 80), ("fast", 60), ("warm", 40), ("steady", 28),
+            ("fading", 18), ("quiet", 12), ("cold", 7), ("quietest", 3),
+        )]
+        held = quiet_list(len(pool))
+        self.assertEqual([pool[i]["title"] for i in held], ["steady", "fading", "quiet", "cold", "quietest"])
+        before = list_points(pool, held)
+        nxt, swap = revise_list(pool, held, "post")
+        self.assertEqual(pool[swap[0]]["title"], "quietest")
+        self.assertEqual(pool[swap[1]]["title"], "hot")
+        self.assertGreater(list_points(pool, nxt), before)
+        held_on, same = revise_list(pool, held, "reply")
+        self.assertEqual(held_on, held)
+        self.assertIsNone(same)
+        for index, item in enumerate(pool):
+            item["post_count"] = 1000 if item["title"] == "warm" else 10 + index
+        _sized, size_swap = revise_list(pool, held, "post", "size")
+        self.assertIsNotNone(size_swap)
+        self.assertEqual(pool[size_swap[1]]["title"], "warm")
+        self.assertNotEqual(starting_list(len(pool), 0), starting_list(len(pool), 1))
+
+
+def _news(text: str, when: str, likes: int = 0) -> dict:
+    return {
+        "likeCount": likes,
+        "repostCount": 0,
+        "indexedAt": when,
+        "record": {"text": text, "createdAt": when},
+    }
+
+
+class CryptoNewsTest(unittest.TestCase):
+    def test_repeat_headlines_merge_and_newer_stories_rank_higher(self) -> None:
+        now = datetime(2026, 10, 9, 16, 0, tzinfo=timezone.utc)
+        posts = [
+            _news(
+                "Ledger probes possible wallet tampering after reports of stolen crypto from reseller devices.",
+                "2026-10-09T04:00:00Z",
+            ),
+            _news(
+                "Ledger probes wallet tampering after stolen crypto was linked to reseller devices in Asia.",
+                "2026-10-09T05:00:00Z",
+                likes=2,
+            ),
+            _news(
+                "Bitcoin nears a three-week low as oil heads higher on strike worries across the region.",
+                "2026-10-09T15:30:00Z",
+            ),
+        ]
+        stories = news_stories(posts, now)
+        self.assertEqual(len(stories), 2)
+        self.assertIn("Bitcoin", stories[0]["title"])
+        self.assertGreater(stories[0]["growth"], stories[1]["growth"])
+        self.assertEqual(stories[1]["post_count"], 2)
 
 
 if __name__ == "__main__":

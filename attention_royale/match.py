@@ -9,7 +9,7 @@ import numpy as np
 
 from .brain import Life
 from .creatures import CREATURES, LINES
-from .live_feed import StaticFeed
+from .live_feed import StaticFeed, list_points, quiet_list, revise_list, starting_list
 from .world import (
     ACTIONS,
     BEST,
@@ -56,6 +56,7 @@ class League:
         self.totals = {"live": 0.0, "frozen": 0.0, "random": 0.0}
         self.feed: list[dict] = []
         self.history: list[dict] = []
+        self.traces = {c["id"]: {"rate": [], "twin": [], "learn": []} for c in self.creatures}
         self.events: list[str] = []
         self.line_cursor = {c["id"]: 0 for c in self.creatures}
         self._last_line: dict[str, tuple[str, str]] = {}
@@ -72,8 +73,15 @@ class League:
             "raised": [],
         }
         self._prev_payoff = [0.0 for _ in self.creatures]
+        self._brain_reward = [0.0 for _ in self.creatures]
         self._random_actions = [0 for _ in self.creatures]
         self._seen: dict[str, list[float]] = {}
+        self.pool: list[dict] = []
+        self.lists: dict[str, list[int]] = {}
+        self.twin_lists: dict[str, list[int]] = {}
+        self.random_lists: dict[str, list[int]] = {}
+        self._swap: dict[str, tuple[int, int] | None] = {}
+        self._list_action: dict[str, str] = {}
 
     def raise_all(self, on_progress: Progress | None = None) -> None:
         self.phase = "reading"
@@ -136,11 +144,62 @@ class League:
                 on_progress(self.progress)
         self.phase = "live"
         self.regime = VIRAL
-        self.events.append(
-            f"Ranking is open. The first lesson was {self._title(TIMELINE)}. "
-            f"{self._title(VIRAL)} is gaining posts fastest, so only that trend adds points."
-        )
+        self._bind_pool()
+        self.events.append("Live. Each brain swaps by its own taste.")
         self.progress = {**self.progress, "phase": "live"}
+
+    def _bind_pool(self) -> None:
+        board = list(self.feed_source.public().get("board") or [])
+        self.pool = sorted(board, key=lambda item: float(item.get("growth") or 0.0), reverse=True)
+        quiet = quiet_list(len(self.pool))
+        self.lists = {}
+        self.twin_lists = {}
+        for index, creature in enumerate(self.creatures):
+            opening = starting_list(len(self.pool), index)
+            self.lists[creature["id"]] = list(opening)
+            self.twin_lists[creature["id"]] = list(opening)
+        self.random_lists = {c["id"]: list(quiet) for c in self.creatures}
+        self._swap = {c["id"]: None for c in self.creatures}
+        self._list_action = {c["id"]: "reply" for c in self.creatures}
+
+    def _held_rate(self, held: list[int]) -> float:
+        return round(
+            sum(float(self.pool[i].get("growth") or 0) for i in held if 0 <= i < len(self.pool)),
+            1,
+        )
+
+    def _note_trace(self, name: str, rate: float, twin: float, learning: bool) -> None:
+        trace = self.traces.setdefault(name, {"rate": [], "twin": [], "learn": []})
+        trace["rate"].append(rate)
+        trace["twin"].append(twin)
+        trace["learn"].append(1 if learning else 0)
+        if len(trace["rate"]) > 2400:
+            for key in trace:
+                del trace[key][:-2400]
+
+    def _list_view(self, held: list[int]) -> list[dict]:
+        rows = []
+        hottest = set(range(min(5, len(self.pool))))
+        for index in held:
+            if not (0 <= index < len(self.pool)):
+                continue
+            item = self.pool[index]
+            rows.append({
+                "title": item.get("title") or "trend",
+                "growth": round(float(item.get("growth") or 0.0), 1),
+                "hot": index in hottest,
+            })
+        return rows
+
+    def _change_text(self, creature_id: str) -> str:
+        swap = self._swap.get(creature_id)
+        if swap and self.pool:
+            left, right = swap
+            if 0 <= left < len(self.pool) and 0 <= right < len(self.pool):
+                return f"{self.pool[left]['title']} → {self.pool[right]['title']}"
+        if self._list_action.get(creature_id) in ("post", "lurk"):
+            return "Already on the fastest."
+        return "Held."
 
     def _title(self, regime: str) -> str:
         slices = self.feed_source.public().get("slices") or {}
@@ -165,9 +224,11 @@ class League:
         self.totals = {"live": 0.0, "frozen": 0.0, "random": 0.0}
         self.feed.clear()
         self.history.clear()
+        self.traces = {c["id"]: {"rate": [], "twin": [], "learn": []} for c in self.creatures}
         self.since = {c["id"]: Counter() for c in self.creatures}
+        self._bind_pool()
         self.events.append(
-            f"Scores cleared. The brains kept what they learned. {self._title(VIRAL)} still adds the points."
+            "Scores cleared. Lists reset."
         )
         self.events = self.events[-8:]
 
@@ -189,7 +250,7 @@ class League:
                 pit_clout_sense(self.scores[creature["id"]]),
                 seen,
             )
-            reward = life.hanging if life.hanging is not None else self._prev_payoff[index]
+            reward = life.hanging if life.hanging is not None else self._brain_reward[index]
             life.hanging = None
             self._seen[creature["id"]] = [round(float(value), 2) for value in obs[0]]
             chosen.append(life.act(obs, reward))
@@ -200,19 +261,42 @@ class League:
         frozen_hits = 0
         random_hits = 0
         for index, creature in enumerate(self.creatures):
-            live_pay = payoff(chosen[index], regime, float(acted[chosen[index]]), self.winners)
-            frozen_pay = payoff(twin_chosen[index], regime, float(acted[twin_chosen[index]]), self.winners)
-            random_pay = payoff(random_chosen[index], regime, float(acted[random_chosen[index]]), self.winners)
-            self._prev_payoff[index] = live_pay
-            self.scores[creature["id"]] += live_pay
-            self.totals["live"] += live_pay
-            self.totals["frozen"] += frozen_pay
-            self.totals["random"] += random_pay
+            name = creature["id"]
+            self._brain_reward[index] = payoff(
+                chosen[index], regime, float(acted[chosen[index]]), self.winners
+            )
+            updated, swap = revise_list(
+                self.pool,
+                self.lists.get(name, []),
+                ACTIONS[chosen[index]],
+                str(creature.get("style") or "hottest"),
+            )
+            self.lists[name] = updated
+            self._swap[name] = swap
+            self._list_action[name] = ACTIONS[chosen[index]]
+            wandered, _wander_swap = revise_list(
+                self.pool,
+                self.random_lists.get(name, []),
+                ACTIONS[random_chosen[index]],
+            )
+            self.random_lists[name] = wandered
+            earned = list_points(self.pool, updated)
+            self._note_trace(
+                name,
+                self._held_rate(updated),
+                self._held_rate(self.twin_lists.get(name, [])),
+                self.lives[index].mode == "aroused",
+            )
+            self._prev_payoff[index] = earned
+            self.scores[name] += earned
+            self.totals["live"] += earned
+            self.totals["frozen"] += list_points(self.pool, self.twin_lists.get(name, []))
+            self.totals["random"] += list_points(self.pool, wandered)
             live_hits += int(chosen[index] == best)
             frozen_hits += int(twin_chosen[index] == best)
             random_hits += int(random_chosen[index] == best)
             self.since[creature["id"]][ACTIONS[chosen[index]]] += 1
-            self._push_line(creature, index, chosen[index], live_pay, regime)
+            self._push_line(creature, index, chosen[index], earned, regime)
         n = len(self.creatures)
         self.history.append({
             "regime": regime,
@@ -258,10 +342,6 @@ class League:
         close = void_close(self.moment)
         creatures = []
         raised = {row["id"]: row for row in self.progress.get("raised", [])}
-        board = {
-            str(item.get("slot")): item
-            for item in (self.feed_source.public().get("board") or [])
-        }
         growing = self.winners.get(VIRAL, "")
         for index, creature in enumerate(self.creatures):
             ready = index < len(self.lives)
@@ -270,10 +350,11 @@ class League:
             mix = self.since[creature["id"]]
             total_mix = sum(mix.values()) or 1
             verb = ACTIONS[life.last_action] if life else "lurk"
-            trend = board.get(verb) or {}
+            held = self.lists.get(creature["id"], [])
             creatures.append({
                 "id": creature["id"],
                 "name": creature["name"],
+                "taste": creature.get("taste") or "",
                 "handle": creature["handle"],
                 "mark": creature["mark"],
                 "color": creature["color"],
@@ -282,7 +363,10 @@ class League:
                 "score": round(self.scores[creature["id"]], 2),
                 "last_pay": round(self._prev_payoff[index], 2),
                 "verb": verb,
-                "trend": trend.get("title") or verb,
+                "list": self._list_view(held),
+                "list_rate": self._held_rate(held),
+                "twin_rate": self._held_rate(self.twin_lists.get(creature["id"], [])),
+                "change": self._change_text(creature["id"]),
                 "on_growing": verb == growing,
                 "twin": ACTIONS[twin.last_action] if twin else "lurk",
                 "mode": life.mode if life else "raising",
@@ -313,11 +397,32 @@ class League:
             "ranking": ranking,
             "feed": list(self.feed),
             "history": list(self.history[-360:]),
+            "traces": {
+                name: {
+                    "rate": _spark(trace["rate"]),
+                    "twin": _spark(trace["twin"]),
+                }
+                for name, trace in self.traces.items()
+            },
             "totals": {k: round(v, 2) for k, v in self.totals.items()},
             "events": list(self.events),
             "senses": list(SENSE_NAMES),
             "actions": list(ACTIONS),
         }
+
+
+def _spark(values: list[float], buckets: int = 160) -> list[float]:
+    """Keep the whole round visible, from the first swaps to now."""
+    if len(values) <= buckets:
+        return list(values)
+    span = len(values) / buckets
+    points = []
+    for index in range(buckets):
+        start = int(index * span)
+        end = max(start + 1, int((index + 1) * span))
+        chunk = values[start:end]
+        points.append(round(sum(chunk) / len(chunk), 1))
+    return points
 
 
 def _calm(life: Life | None) -> float | None:

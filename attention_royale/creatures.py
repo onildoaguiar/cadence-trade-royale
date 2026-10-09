@@ -1,4 +1,4 @@
-"""The six accounts in the pit. Color and copy only — every brain gets the same verbs."""
+"""The six accounts. Same verbs, different taste in which trend they swap in."""
 
 from __future__ import annotations
 
@@ -11,6 +11,8 @@ CREATURES: tuple[dict, ...] = (
         "color": "#d6ff4a",
         "ink": "#17180f",
         "seed": 11,
+        "style": "hottest",
+        "taste": "grabs the fastest",
     },
     {
         "id": "jeet",
@@ -20,6 +22,8 @@ CREATURES: tuple[dict, ...] = (
         "color": "#ff5a36",
         "ink": "#1c0d09",
         "seed": 23,
+        "style": "second",
+        "taste": "takes the one behind",
     },
     {
         "id": "diamond",
@@ -29,6 +33,8 @@ CREATURES: tuple[dict, ...] = (
         "color": "#9fd4ff",
         "ink": "#0c141b",
         "seed": 37,
+        "style": "patient",
+        "taste": "waits for a big jump",
     },
     {
         "id": "pasta",
@@ -38,6 +44,8 @@ CREATURES: tuple[dict, ...] = (
         "color": "#ffcf70",
         "ink": "#1c150b",
         "seed": 41,
+        "style": "crowd",
+        "taste": "follows the small one",
     },
     {
         "id": "whale",
@@ -47,6 +55,8 @@ CREATURES: tuple[dict, ...] = (
         "color": "#e0b0ff",
         "ink": "#160d1b",
         "seed": 53,
+        "style": "size",
+        "taste": "follows the biggest",
     },
     {
         "id": "npc",
@@ -56,6 +66,8 @@ CREATURES: tuple[dict, ...] = (
         "color": "#f3efe7",
         "ink": "#161412",
         "seed": 67,
+        "style": "wander",
+        "taste": "wanders the middle",
     },
 )
 
