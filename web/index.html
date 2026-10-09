@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Trending Royale</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Syne:wght@700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/app.css" />
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <p class="kicker">A demo of <a href="https://github.com/muellerberndt/cadence" target="_blank" rel="noreferrer">Cadence</a></p>
+      <h1>Trending Royale</h1>
+      <p class="lede">Six brains learn which live Bluesky trend is growing fastest. Each brain keeps what it learns.</p>
+    </div>
+    <div class="regime" id="regime" data-regime="timeline">
+      <span class="regime-kicker">this trend adds points</span>
+      <strong id="regime-name">reading trends</strong>
+      <span id="regime-pays">this trend pays</span>
+    </div>
+    <div class="clock">
+      <span id="phase-label">raising</span>
+      <b id="moment">0</b>
+      <span class="clock-note">picks so far</span>
+    </div>
+  </header>
+
+  <main>
+    <section class="board-wrap" id="board-wrap">
+      <div class="feed-head">
+        <h2>Ranking</h2>
+        <p id="event">Reading which trend is growing fastest.</p>
+      </div>
+      <ol class="ranking" id="ranking"></ol>
+    </section>
+
+    <section class="side">
+      <section class="how">
+        <h2>What you are watching</h2>
+        <ol>
+          <li><b>Four live trends.</b> From Bluesky's public list. Read only. Nothing is posted.</li>
+          <li><b>Six Cadence brains.</b> Each pick is one trend. The trend gaining posts fastest adds points. The other three take points away.</li>
+          <li><b>The score is the lesson.</b> A surprise changes the next pick. Calm means the brain stays. It never reads the trend's name.</li>
+        </ol>
+        <p>The bar is where that brain has been sitting. Green is the trend that adds points. The line under the bar is a copy of the same brain that stopped learning, so it stays on the quiet trend from the first lesson.</p>
+      </section>
+      <div class="feed-head">
+        <h2>Live trends</h2>
+        <p>The marked one is gaining posts fastest, so it is the only trend that adds points.</p>
+      </div>
+      <ol class="trends" id="trends"></ol>
+      <div class="chart-block">
+        <div class="chart-key">
+          <span><i class="swatch live"></i> still learning</span>
+          <span><i class="swatch frozen"></i> stopped learning</span>
+          <span><i class="swatch random"></i> picking at random</span>
+          <span class="chart-note" id="chart-note">share sitting on the trend that adds points</span>
+        </div>
+        <canvas id="chart" width="640" height="120"></canvas>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="controls">
+      <button type="button" id="play" disabled>Play</button>
+      <button type="button" id="round" disabled>Clear scores</button>
+    </div>
+    <div class="scores" id="scores">
+      <p><span>still learning</span><b id="score-live">0</b></p>
+      <p><span>stopped learning</span><b id="score-frozen">0</b></p>
+      <p><span>random picks</span><b id="score-random">0</b></p>
+    </div>
+    <section class="inspector" id="inspector">
+      <p class="inspector-empty">Click a brain to read its last lesson.</p>
+    </section>
+  </footer>
+
+  <script src="/app.js"></script>
+</body>
+</html>
