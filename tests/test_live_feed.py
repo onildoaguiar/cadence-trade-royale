@@ -9,12 +9,18 @@ from attention_royale.live_feed import (
     feed_uri,
     growth_per_hour,
     kind_of,
+    liquid_opening,
     list_points,
+    mark_bag,
     news_stories,
+    open_bag,
+    trade_bag,
     quiet_list,
     rank,
     revise_list,
+    price_movers,
     starting_list,
+    trending_coins,
 )
 
 
@@ -137,7 +143,27 @@ class TrendPairTest(unittest.TestCase):
         _sized, size_swap = revise_list(pool, held, "post", "size")
         self.assertIsNotNone(size_swap)
         self.assertEqual(pool[size_swap[1]]["title"], "warm")
+        _jeet, jeet_swap = revise_list(pool, held, "post", "second")
+        self.assertEqual(pool[jeet_swap[0]]["title"], "steady")
+        self.assertEqual(pool[jeet_swap[1]]["title"], "fast")
         self.assertNotEqual(starting_list(len(pool), 0), starting_list(len(pool), 1))
+
+    def test_a_busy_book_opens_on_the_coins_that_reprice(self) -> None:
+        pool = [
+            {"post_count": 1, "title": "dust"},
+            {"post_count": 900, "title": "btc"},
+            {"post_count": 800, "title": "eth"},
+            {"post_count": 50, "title": "mid"},
+            {"post_count": 700, "title": "sol"},
+            {"post_count": 2, "title": "flat"},
+            {"post_count": 600, "title": "bnb"},
+            {"post_count": 500, "title": "xrp"},
+        ]
+        first = liquid_opening(pool, 0)
+        self.assertEqual([pool[index]["title"] for index in first], ["btc", "eth", "sol", "bnb", "xrp"])
+        second = liquid_opening(pool, 1)
+        self.assertNotEqual(first, second)
+        self.assertNotIn("dust", [pool[index]["title"] for index in second])
 
 
 def _news(text: str, when: str, likes: int = 0) -> dict:
@@ -147,6 +173,78 @@ def _news(text: str, when: str, likes: int = 0) -> dict:
         "indexedAt": when,
         "record": {"text": text, "createdAt": when},
     }
+
+
+class BagTest(unittest.TestCase):
+    def test_a_swap_sells_one_coin_and_buys_the_next(self) -> None:
+        prices = [1.0, 1.0, 1.0]
+        bag = open_bag([0, 1], prices, 100)
+        prices[0] = 1.5
+        trade_bag(bag, 0, 2, prices)
+        self.assertNotIn(0, bag["lots"])
+        self.assertAlmostEqual(bag["lots"][2]["coins"], 75.0)
+        self.assertAlmostEqual(mark_bag(bag, prices), 125.0)
+
+
+class PriceMoversTest(unittest.TestCase):
+    def test_the_book_is_every_priced_pair(self) -> None:
+        def row(base: str, change: float, volume: float) -> dict:
+            return {
+                "symbol": f"{base}USDT",
+                "priceChangePercent": str(change),
+                "lastPrice": "2",
+                "quoteVolume": str(volume),
+            }
+
+        payload = [
+            row("MAGIC", 80, 20_000_000),
+            row("STRK", 27, 20_000_000),
+            row("ATOM", 21, 20_000_000),
+            row("DOT", 18, 20_000_000),
+            row("KAIA", 12, 20_000_000),
+            row("OGN", -19, 20_000_000),
+            row("RLC", -6, 20_000_000),
+            row("GTC", -5, 20_000_000),
+            row("USDC", 0.1, 9_000_000_000),
+            row("DUST", 400, 1_000),
+            row("JUP", 30, 20_000_000),
+            row("BTCUP", 90, 20_000_000),
+        ]
+        picked = price_movers(payload)
+        titles = [item["title"] for item in picked]
+        self.assertEqual(titles[0], "DUST")
+        self.assertIn("MAGIC", titles)
+        self.assertIn("OGN", titles)
+        self.assertIn("JUP", titles)
+        self.assertIn("DUST", titles)
+        self.assertGreater(len(picked), 8)
+        self.assertNotIn("USDC", titles)
+        self.assertNotIn("BTCUP", titles)
+        magic = next(item for item in picked if item["title"] == "MAGIC")
+        self.assertEqual(magic["growth"], 0.0)
+        self.assertEqual(magic["day"], 80.0)
+        self.assertEqual(magic["open"], 2.0)
+
+
+class TrendingCoinsTest(unittest.TestCase):
+    def test_the_biggest_daily_move_ranks_first(self) -> None:
+        payload = {
+            "coins": [
+                {"item": {"symbol": "down", "name": "Down", "data": {
+                    "price_change_percentage_24h": {"usd": -10},
+                    "total_volume": "$1,000",
+                }}},
+                {"item": {"symbol": "drv", "name": "Derive", "data": {
+                    "price_change_percentage_24h": {"usd": 20.4},
+                    "total_volume": "$2,500,000",
+                }}},
+            ]
+        }
+        rows = trending_coins(payload)
+        self.assertEqual(rows[0]["title"], "DRV Derive")
+        self.assertEqual(rows[0]["growth"], 20.4)
+        self.assertEqual(rows[0]["post_count"], 2500000)
+        self.assertEqual(rows[1]["title"], "DOWN")
 
 
 class CryptoNewsTest(unittest.TestCase):

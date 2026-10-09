@@ -1,3 +1,3 @@
-"""Trending Royale: six Cadence brains hunting the live trend that is still growing."""
+"""Trade Royale: six Cadence traders fighting over one public coin pool."""
 
 __version__ = "0.1.0"

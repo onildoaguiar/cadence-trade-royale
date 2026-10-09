@@ -7,9 +7,19 @@ from typing import Callable
 
 import numpy as np
 
-from .brain import Life
+from .brain import GENES, Life
 from .creatures import CREATURES, LINES
-from .live_feed import StaticFeed, list_points, quiet_list, revise_list, starting_list
+from .live_feed import (
+    STAKE,
+    StaticFeed,
+    mark_bag,
+    liquid_opening,
+    open_bag,
+    quiet_list,
+    revise_list,
+    starting_list,
+    trade_bag,
+)
 from .world import (
     ACTIONS,
     BEST,
@@ -57,6 +67,10 @@ class League:
         self.feed: list[dict] = []
         self.history: list[dict] = []
         self.traces = {c["id"]: {"rate": [], "twin": [], "learn": []} for c in self.creatures}
+        self.prices: list[float] = []
+        self.bags: dict[str, dict] = {}
+        self.twin_bags: dict[str, dict] = {}
+        self.random_bags: dict[str, dict] = {}
         self.events: list[str] = []
         self.line_cursor = {c["id"]: 0 for c in self.creatures}
         self._last_line: dict[str, tuple[str, str]] = {}
@@ -85,7 +99,7 @@ class League:
 
     def raise_all(self, on_progress: Progress | None = None) -> None:
         self.phase = "reading"
-        self.progress = {**self.progress, "phase": "reading", "name": "the live feed"}
+        self.progress = {**self.progress, "phase": "reading", "name": "the pool"}
         if on_progress:
             on_progress(self.progress)
         self.feed_source.load()
@@ -145,22 +159,92 @@ class League:
         self.phase = "live"
         self.regime = VIRAL
         self._bind_pool()
-        self.events.append("Live. Each brain swaps by its own taste.")
+        self.events.append("Live. Each trader plays their own style.")
         self.progress = {**self.progress, "phase": "live"}
 
     def _bind_pool(self) -> None:
-        board = list(self.feed_source.public().get("board") or [])
-        self.pool = sorted(board, key=lambda item: float(item.get("growth") or 0.0), reverse=True)
+        mark_open = getattr(self.feed_source, "mark_open", None)
+        if mark_open:
+            mark_open()
+        board = self._feed_coins()
+        self.pool = sorted(
+            board,
+            key=lambda item: float(item.get("day") if item.get("day") is not None else item.get("growth") or 0.0),
+            reverse=True,
+        )
         quiet = quiet_list(len(self.pool))
+        liquid = any(float(item.get("post_count") or 0) > 0 for item in self.pool)
         self.lists = {}
         self.twin_lists = {}
         for index, creature in enumerate(self.creatures):
-            opening = starting_list(len(self.pool), index)
+            opening = (
+                liquid_opening(self.pool, index)
+                if liquid
+                else starting_list(len(self.pool), index)
+            )
             self.lists[creature["id"]] = list(opening)
             self.twin_lists[creature["id"]] = list(opening)
         self.random_lists = {c["id"]: list(quiet) for c in self.creatures}
+        self.prices = [1.0 for _ in self.pool]
+        self._price_steps = 0
+        self.bags = {c["id"]: open_bag(self.lists[c["id"]], self.prices) for c in self.creatures}
+        self.twin_bags = {c["id"]: open_bag(self.twin_lists[c["id"]], self.prices) for c in self.creatures}
+        self.random_bags = {c["id"]: open_bag(self.random_lists[c["id"]], self.prices) for c in self.creatures}
         self._swap = {c["id"]: None for c in self.creatures}
         self._list_action = {c["id"]: "reply" for c in self.creatures}
+
+    def _apply_prices(self) -> None:
+        """Mark each coin from the live quote. The offline stand-in still walks its printed move."""
+        if len(self.prices) != len(self.pool):
+            self.prices = [1.0 for _ in self.pool]
+        fresh = {
+            str(item.get("symbol") or item.get("title")): item
+            for item in self._feed_coins()
+        }
+        quoted = False
+        for index, item in enumerate(self.pool):
+            key = str(item.get("symbol") or item.get("title"))
+            quote = fresh.get(key) or {}
+            last = float(quote.get("last") or item.get("last") or 0.0)
+            open_px = float(item.get("open") or 0.0)
+            if open_px > 0 and last > 0:
+                item["last"] = last
+                item["growth"] = round((last / open_px - 1.0) * 100.0, 2)
+                self.prices[index] = last / open_px
+                quoted = True
+        if quoted:
+            return
+        self._price_steps = getattr(self, "_price_steps", 0) + 1
+        if self._price_steps > 400:
+            return
+        for index, item in enumerate(self.pool):
+            change = float(item.get("growth") or 0.0) / 100.0
+            self.prices[index] *= 1.0 + change / 400.0
+
+    def _feed_coins(self) -> list[dict]:
+        book = getattr(self.feed_source, "book", None)
+        if book:
+            return list(book())
+        return list(self.feed_source.public().get("board") or [])
+
+    def _coin(self, index: int) -> str:
+        title = str(self.pool[index].get("title") or "coin")
+        return title.split(" ", 1)[0]
+
+    def _bag_view(self, creature_id: str) -> list[dict]:
+        bag = self.bags.get(creature_id) or {}
+        rows = []
+        for index, lot in (bag.get("lots") or {}).items():
+            if not (0 <= index < len(self.pool) and index < len(self.prices)):
+                continue
+            value = float(lot["coins"]) * self.prices[index]
+            rows.append({
+                "title": self._coin(index),
+                "value": round(value, 1),
+                "gain": round(value - float(lot["cost"]), 1),
+            })
+        rows.sort(key=lambda row: row["gain"], reverse=True)
+        return rows
 
     def _held_rate(self, held: list[int]) -> float:
         return round(
@@ -179,7 +263,6 @@ class League:
 
     def _list_view(self, held: list[int]) -> list[dict]:
         rows = []
-        hottest = set(range(min(5, len(self.pool))))
         for index in held:
             if not (0 <= index < len(self.pool)):
                 continue
@@ -187,7 +270,7 @@ class League:
             rows.append({
                 "title": item.get("title") or "trend",
                 "growth": round(float(item.get("growth") or 0.0), 1),
-                "hot": index in hottest,
+                "hot": float(item.get("growth") or 0.0) > 0,
             })
         return rows
 
@@ -196,10 +279,10 @@ class League:
         if swap and self.pool:
             left, right = swap
             if 0 <= left < len(self.pool) and 0 <= right < len(self.pool):
-                return f"{self.pool[left]['title']} → {self.pool[right]['title']}"
+                return f"Sold {self._coin(left)} · Bought {self._coin(right)}"
         if self._list_action.get(creature_id) in ("post", "lurk"):
-            return "Already on the fastest."
-        return "Held."
+            return "No coin worth a trade."
+        return "Held the bag."
 
     def _title(self, regime: str) -> str:
         slices = self.feed_source.public().get("slices") or {}
@@ -211,7 +294,7 @@ class League:
         self.since = {c["id"]: Counter() for c in self.creatures}
         verb = self.winners[self.regime]
         self.events.append(
-            f"Now scoring {self._title(self.regime)}. Sitting there is what adds points."
+            f"New tape: {self._title(self.regime)}. The move is what pays."
         )
         self.events = self.events[-8:]
         return verb
@@ -228,7 +311,7 @@ class League:
         self.since = {c["id"]: Counter() for c in self.creatures}
         self._bind_pool()
         self.events.append(
-            "Scores cleared. Lists reset."
+            "New round. Bags reset. The traders keep what they learned."
         )
         self.events = self.events[-8:]
 
@@ -260,6 +343,8 @@ class League:
         live_hits = 0
         frozen_hits = 0
         random_hits = 0
+        self._apply_prices()
+        self.totals = {"live": 0.0, "frozen": 0.0, "random": 0.0}
         for index, creature in enumerate(self.creatures):
             name = creature["id"]
             self._brain_reward[index] = payoff(
@@ -280,23 +365,22 @@ class League:
                 ACTIONS[random_chosen[index]],
             )
             self.random_lists[name] = wandered
-            earned = list_points(self.pool, updated)
-            self._note_trace(
-                name,
-                self._held_rate(updated),
-                self._held_rate(self.twin_lists.get(name, [])),
-                self.lives[index].mode == "aroused",
-            )
-            self._prev_payoff[index] = earned
-            self.scores[name] += earned
-            self.totals["live"] += earned
-            self.totals["frozen"] += list_points(self.pool, self.twin_lists.get(name, []))
-            self.totals["random"] += list_points(self.pool, wandered)
+            trade_bag(self.bags[name], *(swap if swap else (None, None)), self.prices)
+            trade_bag(self.random_bags[name], *(_wander_swap if _wander_swap else (None, None)), self.prices)
+            pnl = mark_bag(self.bags[name], self.prices) - STAKE
+            twin_pnl = mark_bag(self.twin_bags[name], self.prices) - STAKE
+            random_pnl = mark_bag(self.random_bags[name], self.prices) - STAKE
+            self._note_trace(name, pnl, twin_pnl, self.lives[index].mode == "aroused")
+            self._prev_payoff[index] = pnl
+            self.scores[name] = pnl
+            self.totals["live"] += pnl
+            self.totals["frozen"] += twin_pnl
+            self.totals["random"] += random_pnl
             live_hits += int(chosen[index] == best)
             frozen_hits += int(twin_chosen[index] == best)
             random_hits += int(random_chosen[index] == best)
             self.since[creature["id"]][ACTIONS[chosen[index]]] += 1
-            self._push_line(creature, index, chosen[index], earned, regime)
+            self._push_line(creature, index, chosen[index], pnl, regime)
         n = len(self.creatures)
         self.history.append({
             "regime": regime,
@@ -355,12 +439,21 @@ class League:
                 "id": creature["id"],
                 "name": creature["name"],
                 "taste": creature.get("taste") or "",
+                "style": creature.get("style") or "",
+                "seed": creature.get("seed"),
                 "handle": creature["handle"],
                 "mark": creature["mark"],
                 "color": creature["color"],
                 "ink": creature["ink"],
                 "ready": ready,
                 "score": round(self.scores[creature["id"]], 2),
+                "bag": self._bag_view(creature["id"]),
+                "twin_pnl": round(mark_bag(self.twin_bags.get(creature["id"], {}), self.prices) - STAKE, 2) if self.prices else 0.0,
+                "still": [
+                    self._coin(index)
+                    for index in self.twin_lists.get(creature["id"], [])
+                    if 0 <= index < len(self.pool)
+                ],
                 "last_pay": round(self._prev_payoff[index], 2),
                 "verb": verb,
                 "list": self._list_view(held),
@@ -408,6 +501,14 @@ class League:
             "events": list(self.events),
             "senses": list(SENSE_NAMES),
             "actions": list(ACTIONS),
+            "setup": {
+                "modules": int(GENES["modules"][0]),
+                "learn": GENES["actor_eta"],
+                "memory": GENES["working_memory_amplitude"],
+                "consolidation": GENES["consolidation"],
+                "temperature": GENES["temperature"],
+                "surprise": GENES["arousal"]["threshold"],
+            },
         }
 
 
@@ -421,7 +522,7 @@ def _spark(values: list[float], buckets: int = 160) -> list[float]:
         start = int(index * span)
         end = max(start + 1, int((index + 1) * span))
         chunk = values[start:end]
-        points.append(round(sum(chunk) / len(chunk), 1))
+        points.append(round(sum(chunk) / len(chunk), 2))
     return points
 
 

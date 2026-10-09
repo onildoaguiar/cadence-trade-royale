@@ -33,7 +33,7 @@ button, input { font: inherit; color: inherit; }
 
 .top {
   display: grid;
-  grid-template-columns: 1fr auto auto;
+  grid-template-columns: 1fr auto auto auto;
   gap: 24px;
   align-items: end;
   padding: 10px 16px 8px;
@@ -128,6 +128,71 @@ h2 {
   letter-spacing: -0.04em;
   line-height: 1;
 }
+
+.source {
+  min-width: 120px;
+  padding: 8px 12px 10px;
+  border: 1px solid var(--line);
+  background: #181510;
+}
+
+.source strong {
+  display: block;
+  margin-top: 2px;
+  font-family: Syne, Georgia, sans-serif;
+  font-size: 15px;
+  letter-spacing: -0.04em;
+  line-height: 1.1;
+}
+
+.source strong a {
+  color: inherit;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+
+.source[data-status="live"] strong { color: var(--gm); }
+.source[data-status="reading"] strong,
+.source[data-status="stale"] strong { color: #ffcf70; }
+.source[data-status="down"] strong { color: var(--panic); }
+
+#source-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+#source-status i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  flex: none;
+}
+
+.source[data-status="live"] #source-status { color: var(--gm); }
+.source[data-status="live"] #source-status i {
+  background: var(--gm);
+  animation: source-pulse 1.6s ease-out infinite;
+}
+
+@keyframes source-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(214, 255, 74, 0.7); }
+  70% { box-shadow: 0 0 0 8px rgba(214, 255, 74, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(214, 255, 74, 0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .source[data-status="live"] #source-status i { animation: none; }
+}
+.source[data-status="reading"] #source-status,
+.source[data-status="stale"] #source-status { color: #ffcf70; }
+.source[data-status="down"] #source-status { color: var(--panic); }
 
 .void-meter {
   margin-top: 8px;
@@ -290,7 +355,20 @@ main {
   letter-spacing: -0.04em;
   text-align: right;
   padding-top: 2px;
-  min-width: 7ch;
+  min-width: 9ch;
+}
+.ranking .score .total {
+  display: block;
+  font-weight: 700;
+}
+.ranking .score .pnl {
+  display: block;
+  margin-top: 2px;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 500;
+  letter-spacing: 0;
 }
 .ranking .bar {
   display: block;
@@ -308,6 +386,36 @@ main {
   font-family: "IBM Plex Mono", ui-monospace, monospace;
   font-size: 11px;
   letter-spacing: 0;
+}
+
+.best-now {
+  margin: 0 12px 8px;
+  padding: 8px 12px 10px;
+  border: 1px solid rgba(214, 255, 74, 0.7);
+  background: #181510;
+}
+
+.best-now strong {
+  display: block;
+  margin-top: 2px;
+  font-family: Syne, Georgia, sans-serif;
+  font-size: 18px;
+  letter-spacing: -0.04em;
+  line-height: 1;
+  color: var(--gm);
+}
+
+.best-now[data-side="down"] {
+  border-color: rgba(255, 90, 54, 0.7);
+}
+
+.best-now[data-side="down"] strong { color: var(--panic); }
+
+.best-now span:last-child {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .trends {
@@ -642,13 +750,19 @@ body:has(.pit.viral) button.flip {
   gap: 16px;
 }
 
-.scores p { margin: 0; }
-.scores span {
+.scores p { margin: 0; min-width: 7.5ch; }
+.scores span, .scores em {
   display: block;
   color: var(--muted);
+  font-style: normal;
   font-size: 10px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+}
+.scores em {
+  margin-top: 1px;
+  letter-spacing: 0.04em;
+  text-transform: none;
 }
 .scores b {
   font-family: Syne, Georgia, sans-serif;
@@ -662,8 +776,106 @@ body:has(.pit.viral) button.flip {
   border-left: 1px solid var(--line);
   padding-left: 16px;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 18px;
+}
+
+.visuals {
+  min-width: 168px;
+  flex: 1;
+  display: grid;
+  gap: 6px;
+}
+
+.meters {
+  display: flex;
+  gap: 8px;
+  height: 46px;
+}
+
+.meter {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  width: 22px;
+}
+
+.meter b {
+  flex: 1;
+  width: 8px;
+  background: #2a261f;
+  display: flex;
+  align-items: flex-end;
+}
+
+.meter i { display: block; width: 100%; }
+
+.meter em, .shift em, .calm em {
+  font-style: normal;
+  color: var(--muted);
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.shift, .calm {
+  display: grid;
+  grid-template-columns: 52px 1fr;
+  gap: 3px 8px;
+  align-items: center;
+  color: var(--muted);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.shift b, .calm b, .verbmix {
+  display: flex;
+  height: 6px;
+  background: #2a261f;
+  overflow: hidden;
+}
+
+.shift i, .calm i, .verbmix i { display: block; height: 100%; }
+.shift i { width: 0; background: var(--frozen); }
+
+.verbmix { width: 100%; }
+
+.calm.learning em { color: var(--gm); }
+.calm.learning em::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 5px;
+  border-radius: 50%;
+  background: var(--gm);
+  box-shadow: 0 0 0 0 rgba(214, 255, 74, 0.7);
+  animation: source-pulse 1.6s ease-out infinite;
+  vertical-align: middle;
+}
+
+.facts {
+  min-width: 0;
+  flex: 1;
+}
+
+.facts p {
+  margin: 0 0 4px;
+  color: var(--ink);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.facts span {
+  display: inline-block;
+  min-width: 78px;
+  margin-right: 8px;
+  color: var(--muted);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .brain {
@@ -718,11 +930,37 @@ body:has(.pit.viral) button.flip {
 }
 
 .inspector .meta {
-  margin: 4px 0 0;
+  margin: 2px 0 0;
   color: var(--muted);
   font-size: 12px;
-  line-height: 1.4;
-  max-width: 62ch;
+  line-height: 1.3;
+}
+
+.compare {
+  display: flex;
+  gap: 16px;
+  margin: 6px 0 0;
+}
+
+.compare span {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.compare em {
+  font-style: normal;
+  color: var(--muted);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.compare b {
+  font-family: Syne, Georgia, sans-serif;
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.03em;
 }
 
 .bars {

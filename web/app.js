@@ -4,10 +4,10 @@ let selected = "frog";
 let lastState = null;
 
 const MOVES = [
-  ["lurk", "look"],
-  ["post", "faster"],
+  ["lurk", "watch"],
+  ["post", "chase"],
   ["reply", "hold"],
-  ["raid", "colder"],
+  ["raid", "fade"],
 ];
 
 const shownScores = new Map();
@@ -67,26 +67,47 @@ function render(state) {
   round.disabled = !live;
   play.textContent = state.running ? "Pause" : "Play";
   play.dataset.cmd = state.running ? "pause" : "play";
-  const growing = growingTrend(state);
+  const leader = (state.ranking || state.creatures || [])[0];
 
-  $("regime").dataset.regime = "viral";
-  $("regime-name").textContent = growing.title || "reading trends";
-  $("regime-pays").textContent = live
-    ? `${Math.round(growing.growth || 0)}/h`
-    : "";
-  $("phase-label").textContent = live ? (state.running ? "ranking" : "paused") : "first lesson";
+  $("regime").dataset.regime = (Number(leader?.score) || 0) < 0 ? "viral" : "timeline";
+  $("regime-name").textContent = leader?.name || "the board";
+  $("regime-pays").textContent = live ? fmtInt(leader?.score) : "";
+  $("phase-label").textContent = live ? (state.running ? "live" : "paused") : "arming";
   $("moment").textContent = String(state.moment ?? 0);
+  drawSource(state);
 
-  easeScore("live", state.totals?.live, $("score-live"));
-  easeScore("frozen", state.totals?.frozen, $("score-frozen"));
-  easeScore("random", state.totals?.random, $("score-random"));
+  easeScore("live", state.totals?.live, $("score-live"), moneyTone(state.totals?.live));
+  easeScore("frozen", state.totals?.frozen, $("score-frozen"), moneyTone(state.totals?.frozen));
+  easeScore("random", state.totals?.random, $("score-random"), moneyTone(state.totals?.random));
+  const count = Number(state.source?.count) || (state.source?.board || []).length;
+  const note = $("pool-note");
+  if (note) {
+    note.textContent = count
+      ? `${count.toLocaleString()} coins. The list is the live moves.`
+      : "Every USDT pair. Profit is the score.";
+  }
   $("event").textContent = live ? "" : nurseryLine(state.progress);
 
   drawNursery(state);
   drawRanking(state);
+  drawBest(state);
   drawTrends(state);
   drawChart(state);
   drawInspector(state);
+}
+
+function drawSource(state) {
+  const source = state.source || {};
+  const box = $("source");
+  const link = $("source-link");
+  const label = $("source-status");
+  const status = source.error ? "down" : (source.status || "reading");
+  if (box) box.dataset.status = status;
+  if (link) {
+    link.textContent = source.name || "Prices";
+    if (source.url) link.href = source.url;
+  }
+  if (label) label.innerHTML = `<i></i>${escapeHtml(status)}`;
 }
 
 function growingTrend(state) {
@@ -95,10 +116,10 @@ function growingTrend(state) {
 }
 
 function nurseryLine(progress) {
-  if (!progress) return "Reading trends.";
-  if (progress.phase === "reading") return "Reading trends.";
+  if (!progress) return "Reading the pool.";
+  if (progress.phase === "reading") return "Reading the pool.";
   const done = progress.moments ? Math.round((100 * progress.moment) / progress.moments) : 0;
-  const who = progress.name || "a brain";
+  const who = progress.name || "a trader";
   return `${who} · ${done}%`;
 }
 
@@ -118,7 +139,7 @@ function drawNursery(state) {
   const raised = (progress.raised || []).map((row) => row.name).join(" · ");
   veil.innerHTML = `
     <div>
-      <b>First lesson</b>
+      <b>Arming</b>
       <p>${nurseryLine(progress)}</p>
       <div class="track"><i style="width:${pct}%"></i></div>
       <p>${raised}</p>
@@ -149,9 +170,10 @@ function drawRanking(state) {
         <span class="detail">
           <span class="who"></span>
           <span class="trend-name"></span>
+          <span class="twin-line"></span>
           <span class="chips"></span>
         </span>
-        <span class="score"></span>`;
+        <span class="score"><b class="total"></b><em class="pnl"></em></span>`;
       host.appendChild(item);
     }
     item.className = (creature.rank === 1 ? "leader" : "") + (creature.id === selected ? " selected" : "");
@@ -162,19 +184,36 @@ function drawRanking(state) {
     mark.style.background = creature.color;
     mark.style.color = creature.ink;
     item.querySelector(".who").innerHTML = `${escapeHtml(creature.name)} <em>${escapeHtml(creature.taste || "")}</em>`;
-    item.querySelector(".trend-name").innerHTML = creature.ready
-      ? `${Math.round(creature.list_rate || 0)}/h <em>stopped ${Math.round(creature.twin_rate || 0)}/h</em>`
-      : "first lesson";
+    item.querySelector(".trend-name").textContent = creature.ready
+      ? (creature.change || "Held the bag.")
+      : "arming";
+    const twin = item.querySelector(".twin-line");
+    if (twin) {
+      const stillBag = 1000 + (Number(creature.twin_pnl) || 0);
+      const names = (creature.still || []).join(" ");
+      twin.textContent = creature.ready ? `held still ${fmtMoney(stillBag)}` : "";
+      twin.title = names
+        ? `Same coins, never sold: ${names}`
+        : "Same opening coins, never sold";
+    }
     const chipHost = item.querySelector(".chips");
     const signature = (creature.list || []).map((trend) => `${trend.hot ? "1" : "0"}${trend.title}`).join("|");
     if (chipHost.dataset.sig !== signature) {
       chipHost.dataset.sig = signature;
       chipHost.innerHTML = (creature.list || []).map((trend) => `
-        <span class="${trend.hot ? "hot" : ""}" title="${Math.round(trend.growth || 0)}/h">${escapeHtml(trend.title)}</span>
+        <span class="${trend.hot ? "hot" : ""}" title="${move(trend.growth)}">${escapeHtml(trend.title)}</span>
       `).join("");
     }
     const tone = (Number(creature.score) || 0) >= 0 ? "var(--gm)" : "var(--panic)";
-    easeScore(creature.id, creature.score, item.querySelector(".score"), tone);
+    const score = item.querySelector(".score");
+    if (!score.querySelector(".total")) {
+      score.innerHTML = `<b class="total"></b><em class="pnl"></em>`;
+    }
+    const total = creature.total != null ? Number(creature.total) : 1000 + (Number(creature.score) || 0);
+    easeScore(`${creature.id}-bag`, total, score.querySelector(".total"), "var(--ink)", fmtMoney);
+    const pnl = score.querySelector(".pnl");
+    pnl.textContent = fmtInt(creature.score);
+    pnl.style.color = tone;
   });
   host.querySelectorAll("li").forEach((item) => {
     if (!seen.has(item.dataset.id)) item.remove();
@@ -197,12 +236,13 @@ function drawRanking(state) {
   host.dataset.order = orderKey;
 }
 
-function easeScore(id, value, element, color) {
+function easeScore(id, value, element, color, format) {
   if (!element) return;
   const target = Number(value) || 0;
   const view = shownScores.get(id) || { shown: target, target };
   view.target = target;
   view.element = element;
+  view.format = format || fmtInt;
   if (color) view.color = color;
   shownScores.set(id, view);
   if (view.color) element.style.color = view.color;
@@ -215,14 +255,57 @@ function stepScores() {
     const gap = view.target - view.shown;
     view.shown = Math.abs(gap) < 0.6 ? view.target : view.shown + gap * 0.22;
     if (view.shown !== view.target) moving = true;
-    if (view.element) view.element.textContent = fmtInt(view.shown);
+    if (view.element) view.element.textContent = (view.format || fmtInt)(view.shown);
   });
   scoreFrame = moving ? requestAnimationFrame(stepScores) : 0;
 }
 
+function priceMeta(trend) {
+  const since = `${move(trend.growth)} since open`;
+  if (trend.day == null || trend.day === "") {
+    return trend.status ? `${move(trend.growth)} · ${escapeHtml(trend.status)}` : move(trend.growth);
+  }
+  return `${since} · 24h ${move(trend.day)}`;
+}
+
+function move(value) {
+  const number = Number(value) || 0;
+  const abs = Math.abs(number);
+  const digits = abs !== 0 && abs < 10 ? 1 : 0;
+  const body = abs.toLocaleString(undefined, {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  });
+  if (number > 0) return `+${body}%`;
+  if (number < 0) return `-${body}%`;
+  return "0%";
+}
+
+function moneyTone(value) {
+  const number = Number(value) || 0;
+  if (number > 0) return "var(--gm)";
+  if (number < 0) return "var(--panic)";
+  return "var(--muted)";
+}
+
+function fmtMoney(value) {
+  const number = Number(value) || 0;
+  const body = Math.abs(number).toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+  return number < 0 ? `-$${body}` : `$${body}`;
+}
+
 function fmtInt(value) {
-  const number = Math.round(Number(value) || 0);
-  return number > 0 ? `+${number.toLocaleString()}` : number.toLocaleString();
+  const number = Number(value) || 0;
+  const body = Math.abs(number).toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+  if (number > 0) return `+$${body}`;
+  if (number < 0) return `-$${body}`;
+  return "$0.00";
 }
 
 const SLOT_COLOR = {
@@ -233,8 +316,8 @@ const SLOT_COLOR = {
 };
 
 function lessonLine(creature) {
-  if (!creature.ready) return "First lesson.";
-  const mood = creature.mode === "aroused" ? "Surprised" : "Calm";
+  if (!creature.ready) return "Arming.";
+  const mood = creature.mode === "aroused" ? "Learning" : "Steady";
   return `${mood} · ${shortChange(creature.change)}`;
 }
 
@@ -266,19 +349,33 @@ function mixBar(state, creature) {
   return `<span class="mixbar" title="Where this brain has been sitting">${parts}</span>`;
 }
 
+function drawBest(state) {
+  const board = [...(state.source?.board || [])].sort((a, b) => (b.growth || 0) - (a.growth || 0));
+  const best = board[0];
+  const box = $("best-now");
+  const name = $("best-name");
+  const move = $("best-move");
+  if (!name || !move) return;
+  if (!best) {
+    name.textContent = "—";
+    move.textContent = "";
+    return;
+  }
+  name.textContent = best.title || "—";
+  move.textContent = priceMeta(best);
+  if (box) box.dataset.side = Number(best.growth) < 0 ? "down" : "up";
+}
+
 function drawTrends(state) {
   const host = $("trends");
   const board = [...(state.source?.board || [])].sort((a, b) => (b.growth || 0) - (a.growth || 0));
-  board.forEach((trend, index) => {
-    trend.hot = index < 5;
-  });
-  host.innerHTML = board.map((trend) => `
-    <li class="${trend.paying ? "paying" : ""}">
+  const rest = board.slice(1);
+  host.innerHTML = rest.map((trend) => `
+    <li class="${Number(trend.growth) > 0 ? "paying" : ""}">
       <div class="trend-title">
         <b>${escapeHtml(trend.title)}</b>
-        ${trend.hot ? `<span class="badge">hot</span>` : ""}
       </div>
-      <p class="trend-meta">${Math.round(trend.growth || 0)}/h${trend.status ? ` · ${escapeHtml(trend.status)}` : ""}</p>
+      <p class="trend-meta">${priceMeta(trend)}</p>
     </li>`).join("");
 }
 
@@ -372,7 +469,7 @@ function drawChart(state) {
   const who = $("chart-who");
   const swatch = $("chart-live");
   if (!creature) {
-    if (who) who.textContent = "Click a brain";
+    if (who) who.textContent = "Pick a trader";
     return;
   }
   if (who) who.textContent = creature.name;
@@ -381,16 +478,17 @@ function drawChart(state) {
   const trace = (state.traces || {})[creature.id] || {};
   const rate = smoothSeries(trace.rate || []);
   const twin = smoothSeries(trace.twin || []);
-  const ceiling = chartCeiling(state, rate, twin);
-  strokeSeries(ctx, twin, "#9a9288", width, height, ceiling);
-  strokeSeries(ctx, rate, creature.color || "#d6ff4a", width, height, ceiling);
+  const span = chartSpan(rate, twin);
+  strokeSeries(ctx, twin, "#9a9288", width, height, span);
+  strokeSeries(ctx, rate, creature.color || "#d6ff4a", width, height, span);
 }
 
-function chartCeiling(state, rate, twin) {
-  const board = [...(state.source?.board || [])].sort((a, b) => (b.growth || 0) - (a.growth || 0));
-  const hottest = board.slice(0, 5).reduce((sum, trend) => sum + (Number(trend.growth) || 0), 0);
-  const seen = Math.max(hottest, ...rate, ...twin, 1);
-  return seen * 1.08;
+function chartSpan(rate, twin) {
+  const values = [...rate, ...twin, 0];
+  const low = Math.min(...values);
+  const high = Math.max(...values);
+  const pad = Math.max(1, (high - low) * 0.08);
+  return { low: low - pad, high: high + pad };
 }
 
 function smoothSeries(values) {
@@ -400,11 +498,12 @@ function smoothSeries(values) {
   });
 }
 
-function strokeSeries(ctx, values, color, width, height, ceiling) {
+function strokeSeries(ctx, values, color, width, height, span) {
   if (values.length < 2) return;
+  const heightSpan = span.high - span.low || 1;
   const point = (value, index) => ({
     x: 8 + (index / (values.length - 1)) * (width - 16),
-    y: height - 10 - (Math.max(0, value) / ceiling) * (height - 20),
+    y: height - 10 - ((value - span.low) / heightSpan) * (height - 20),
   });
   ctx.beginPath();
   ctx.lineJoin = "round";
@@ -469,23 +568,113 @@ function trendTitle(state, slot) {
   return match?.title || slot || "";
 }
 
+const STYLES = {
+  hottest: "Sells the weakest move and buys the strongest outside, only when the new move is better.",
+  second: "Sells the winner and buys the second-best move outside.",
+  patient: "Sells the weakest move and buys the strongest only when it is at least 1.75× bigger.",
+  crowd: "Sells the busiest coin and buys the quietest volume outside.",
+  size: "Sells the quietest volume and buys the busiest coin outside.",
+  wander: "Sells the middle move and buys the middle move outside.",
+};
+
 function drawInspector(state) {
   const creature = (state.creatures || []).find((row) => row.id === selected) || state.creatures?.[0];
   const host = $("inspector");
   if (!creature) {
-    host.innerHTML = `<p class="inspector-empty">Click a brain.</p>`;
+    host.innerHTML = `<p class="inspector-empty">Pick a trader.</p>`;
     return;
   }
   const activity = creature.activity || {};
   const motors = activity.motor || [];
+  const trading = creature.total != null ? Number(creature.total) : 1000 + (Number(creature.score) || 0);
+  const still = 1000 + (Number(creature.twin_pnl) || 0);
+  const stillNames = (creature.still || []).join(" · ");
   host.innerHTML = `
     <header>
       <h3 style="color:${creature.color}">${escapeHtml(creature.name)}</h3>
-      <p class="meta">${escapeHtml(creature.taste || "")}</p>
-      <p class="meta">${escapeHtml(lessonLine(creature))}</p>
+      <p class="meta">${escapeHtml(creature.taste || "")} · seed ${escapeHtml(creature.seed ?? "")}</p>
+      <p class="compare" title="${escapeHtml(stillNames ? `Never sold ${stillNames}` : "Same opening coins, never sold")}">
+        <span><em>trading</em><b style="color:${moneyTone(creature.score)}">${fmtMoney(trading)}</b></span>
+        <span><em>held still</em><b style="color:${moneyTone(creature.twin_pnl)}">${fmtMoney(still)}</b></span>
+      </p>
     </header>
-    <div class="brain" title="What this brain is firing">${brainCells(activity.association, creature.color)}</div>
+    <div class="visuals">${visuals(state, creature)}</div>
+    <div class="brain" title="What this trader is firing">${brainCells(activity.association, creature.color)}</div>
     <div class="motors">${motorCells(motors, creature)}</div>`;
+}
+
+function visuals(state, creature) {
+  const setup = state.setup || {};
+  const mix = creature.mix || {};
+  const share = (key) => Math.round((Number(mix[key]) || 0) * 100);
+  const chase = share("post");
+  const hold = share("reply");
+  const watch = share("lurk");
+  const fade = share("raid");
+  const nursery = creature.nursery_reply == null ? 0 : Math.round(Number(creature.nursery_reply) * 100);
+  const calm = creature.calm == null ? 0 : Math.round(Number(creature.calm) * 100);
+  const learning = creature.mode === "aroused";
+  const color = creature.color || "var(--gm)";
+  return `
+    <div class="meters" title="${escapeHtml(STYLES[creature.style] || "")}">
+      ${meter("mod", setup.modules, 32, color)}
+      ${meter("learn", setup.learn, 0.4, color)}
+      ${meter("mem", setup.memory, 1, color)}
+      ${meter("wake", setup.surprise, 1, color)}
+    </div>
+    <div class="shift" title="Held when it woke up, chases now">
+      <span>then <em>${nursery}%</em></span>
+      <b><i style="width:${nursery}%"></i></b>
+      <span>now <em>${chase}%</em></span>
+      <b class="now"><i style="width:${chase}%;background:${color}"></i></b>
+    </div>
+    <div class="verbmix" title="watch ${watch}% · chase ${chase}% · hold ${hold}% · fade ${fade}%">
+      <i style="width:${watch}%;background:#9fd4ff"></i>
+      <i style="width:${chase}%;background:${color}"></i>
+      <i style="width:${hold}%;background:#c8bfb4"></i>
+      <i style="width:${fade}%;background:#ffcf70"></i>
+    </div>
+    <div class="calm ${learning ? "learning" : ""}" title="${learning ? "Learning" : "Steady"} · ${calm}% calm · ${creature.sweeps || 0} sweeps">
+      <b><i style="width:${calm}%;background:${color}"></i></b>
+      <em>${learning ? "learning" : "steady"}</em>
+    </div>`;
+}
+
+function meter(label, value, max, color) {
+  const amount = Number(value) || 0;
+  const pct = Math.max(6, Math.min(100, (amount / max) * 100));
+  return `<span class="meter" title="${label} ${amount}"><b><i style="height:${pct.toFixed(0)}%;background:${color}"></i></b><em>${label}</em></span>`;
+}
+
+function setupLine(state) {
+  const setup = state.setup || {};
+  if (!setup.modules) return "Same Cadence setup for every trader.";
+  return `${setup.modules} modules · learns at ${setup.learn} · memory ${setup.memory} · surprise wakes it at ${setup.surprise}`;
+}
+
+function knowledgeLine(creature) {
+  if (!creature.ready) return "Still arming.";
+  const mix = creature.mix || {};
+  const chase = Math.round((Number(mix.post) || 0) * 100);
+  const hold = Math.round((Number(mix.reply) || 0) * 100);
+  const calm = creature.calm == null ? null : Math.round(Number(creature.calm) * 100);
+  const nursery = creature.nursery_reply == null ? null : Math.round(Number(creature.nursery_reply) * 100);
+  const mode = creature.mode === "aroused" ? "Learning" : "Steady";
+  const parts = [];
+  if (nursery != null) parts.push(`Left holding ${nursery}%.`);
+  parts.push(`This round: chase ${chase}%, hold ${hold}%.`);
+  parts.push(mode);
+  if (calm != null) parts.push(`${calm}% calm`);
+  if (creature.sweeps) parts.push(`${creature.sweeps} sweeps`);
+  if (creature.learned) parts.push("a lesson landed");
+  const head = parts.splice(0, nursery != null ? 2 : 1);
+  return `${head.join(" ")} ${parts.join(" · ")}`.trim();
+}
+
+function bagText(creature) {
+  const rows = creature.bag || [];
+  if (!rows.length) return "No bag yet.";
+  return rows.map((row) => `${row.title} ${fmtInt(row.gain)}`).join(" · ");
 }
 
 function brainCells(values, color) {

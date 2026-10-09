@@ -1,4 +1,4 @@
-"""Serve the pit. The brains run in-process; the page only watches and flips the feed.
+"""Serve Trade Royale. The traders run in-process; the page only watches.
 
     python server.py
 """
@@ -137,7 +137,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Trending Royale")
+    parser = argparse.ArgumentParser(description="Trade Royale")
     parser.add_argument("--host", default=os.environ.get("HOST", "127.0.0.1"))
     parser.add_argument("--port", type=int, default=int(os.environ.get("PORT", "8765")))
     parser.add_argument("--moments", type=int, default=360)
@@ -147,8 +147,8 @@ def main() -> None:
     threading.Thread(target=pit.boot, daemon=True).start()
     threading.Thread(target=pit.loop, daemon=True).start()
     server = ThreadingHTTPServer((args.host, args.port), Handler)
-    print(f"Trending Royale  http://{args.host}:{args.port}/", flush=True)
-    print("Reading crypto news, then raising six brains. The page shows that while it runs.", flush=True)
+    print(f"Trade Royale  http://{args.host}:{args.port}/", flush=True)
+    print("Reading live prices, then arming six traders. The page shows that while it runs.", flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: cadence-trending-royale
+    name: cadence-trade-royale
     runtime: python
     plan: free
     buildCommand: pip install -r requirements.txt

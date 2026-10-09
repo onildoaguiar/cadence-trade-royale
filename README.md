@@ -1,10 +1,10 @@
-# Trending Royale
+# Trade Royale
 
-A demo of [Cadence](https://github.com/muellerberndt/cadence). Six brains each keep a list of five crypto news stories from public [Bluesky](https://bsky.app) posts.
+A [Cadence](https://github.com/muellerberndt/cadence) battle. Six traders each hold a simulated bag of five coins. They can buy any USDT pair on the public [Binance](https://www.binance.com) ticker.
 
-Points are how fast those five are growing, in posts per hour. A brain does not read the names. It only feels the score, and it swaps a slower trend for a faster one when that raises the score.
+Each trader starts with $1,000. Selling one coin and buying another is the only move, and the board is who made more. Nothing is sent to an exchange.
 
-The ranking is who built the list that earns more. A copy of each brain stops learning after the first lesson, so it keeps the quieter five and falls behind. Nothing is posted.
+A copy of each trader sits the round out after the first lesson, so that bag never trades. A random bag trades with no style. The live traders keep learning.
 
 ## Run
 
@@ -15,18 +15,18 @@ export OMP_NUM_THREADS=1
 .venv/bin/python server.py
 ```
 
-Open http://127.0.0.1:8765/. The page reads crypto headlines that people posted from CoinDesk, Cointelegraph, The Block, and Decrypt. Each brain starts with five quieter stories. After about half a minute, the brains that are still learning should have swapped in the ones being shared faster. The copies that stopped should still hold the quieter five.
+Open http://127.0.0.1:8765/. The page reads live prices. Each trader starts with $1,000 and plays a different style: scalper, sells winners, diamond hands, buys small, buys size, wanders. The board is who made more after the round opened.
 
 - **Space** pauses.
-- **Clear scores** starts the ranking over. The brains keep what they already learned.
+- **New round** resets the bags. The traders keep what they already learned.
 
-Click a brain to read its last lesson: whether that pick added points, and whether the brain was surprised or calm.
+Pick a trader to see the style, the last trade, and each coin's gain.
 
-## Where the stories come from
+## Where the coins come from
 
-The pool is crypto news: public Bluesky posts from the last day that link to CoinDesk, Cointelegraph, The Block, or Decrypt. No token is required. A story's score is how fast it is being shared. The page only reads. It does not post, like, follow, or trade.
+The book is Binance's public 24h ticker: every USDT pair except stables and leveraged tokens. No token is required. The page lists the coins that are moving. A bag is marked to the live price after the round opens. The page only reads. Buys and sells are simulated.
 
-The brains are [Cadence](https://github.com/muellerberndt/cadence) `0.80.0` (`Brain.compose` and `Brain.live` from `cadence-net`). One brain per name, and that brain keeps going.
+The traders are [Cadence](https://github.com/muellerberndt/cadence) `0.80.0` (`Brain.compose` and `Brain.live` from `cadence-net`). One life per name, and that life keeps going.
 
 ## Checks
 
@@ -34,4 +34,4 @@ The brains are [Cadence](https://github.com/muellerberndt/cadence) `0.80.0` (`Br
 .venv/bin/python -m unittest tests.test_world tests.test_live_feed tests.test_repair
 ```
 
-`tests.test_repair` checks that brains which keep learning move onto the action that improves the list. The copies that stopped do not.
+`tests.test_repair` checks that traders who keep learning move onto the action that improves the bag. The copies that sat out do not.

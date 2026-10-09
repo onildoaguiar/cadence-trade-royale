@@ -18,7 +18,7 @@ def _window(history: list[dict], key: str, start: int, end: int) -> float:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Run a Trending Royale drill and print the rates.")
+    parser = argparse.ArgumentParser(description="Run a Trade Royale drill and print the rates.")
     parser.add_argument("--moments", type=int, default=360, help="nursery moments per brain")
     parser.add_argument("--gm", type=int, default=40, help="pit moments on gm before the flip")
     parser.add_argument("--panic", type=int, default=400, help="pit moments after the flip")

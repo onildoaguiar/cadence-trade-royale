@@ -1,7 +1,7 @@
-"""Read-only crypto news from public Bluesky posts.
+"""Read-only prices from Binance's public ticker.
 
-Each story is a headline linking to a crypto news site. Nothing here posts,
-likes, or follows.
+The book is every priced USDT pair. Profit is the move after the round
+opens. Nothing here is sent to an exchange.
 """
 
 from __future__ import annotations
@@ -9,6 +9,8 @@ from __future__ import annotations
 import json
 import math
 import re
+import threading
+import time
 import urllib.parse
 import urllib.request
 from collections import defaultdict
@@ -18,9 +20,16 @@ from typing import Any
 from .world import ACTIONS, BEST, TIMELINE, VIRAL
 
 APPVIEW = "https://api.bsky.app/xrpc"
+BINANCE = "https://api.binance.com/api/v3/ticker/24hr"
+BINANCE_PRICE = "https://api.binance.com/api/v3/ticker/price"
+STABLES = frozenset({
+    "USDC", "FDUSD", "TUSD", "DAI", "USDP", "EUR", "AEUR", "USD1",
+    "USDE", "BFUSD", "USDS", "RLUSD", "XUSD", "BUSD", "USDD",
+})
 MIN_COUNT = 6
 TREND_LIMIT = 10
 POOL_SIZE = 8
+SHOWN = 12
 LIST_SIZE = 5
 NEWS_DOMAINS = ("coindesk.com", "cointelegraph.com", "theblock.co", "decrypt.co")
 NEWS_HOURS = 24
@@ -101,7 +110,7 @@ def _get(method: str, params: dict[str, str]) -> dict[str, Any]:
     url = f"{APPVIEW}/{method}?" + urllib.parse.urlencode(params)
     request = urllib.request.Request(
         url,
-        headers={"Accept": "application/json", "User-Agent": "cadence-trending-royale"},
+        headers={"Accept": "application/json", "User-Agent": "cadence-trade-royale"},
     )
     with urllib.request.urlopen(request, timeout=20) as response:
         payload = json.load(response)
@@ -172,6 +181,26 @@ def quiet_list(pool_size: int, size: int = LIST_SIZE) -> list[int]:
     return list(range(pool_size - size, pool_size))
 
 
+def liquid_opening(pool: list[dict[str, Any]], shift: int, size: int = LIST_SIZE) -> list[int]:
+    """Opening five among the busiest coins, shifted so each brain starts different.
+
+    The quiet tail of a big book barely trades, so a bag that never sells
+    stays exactly flat. The busiest names reprice, and that is the comparison.
+    """
+    if not pool:
+        return []
+    count = min(size, len(pool))
+    ranked = sorted(
+        range(len(pool)),
+        key=lambda index: float(pool[index].get("post_count") or 0.0),
+        reverse=True,
+    )
+    span = min(len(ranked), count + 8)
+    head = ranked[:span]
+    start = shift % max(span - count + 1, 1)
+    return head[start : start + count]
+
+
 def starting_list(pool_size: int, shift: int, size: int = LIST_SIZE) -> list[int]:
     """A different opening five for each brain, still toward the slower end."""
     if pool_size <= 0:
@@ -187,6 +216,50 @@ def starting_list(pool_size: int, shift: int, size: int = LIST_SIZE) -> list[int
         if index not in held:
             held.append(index)
     return held[:count]
+
+
+STAKE = 1000.0
+
+
+def open_bag(held: list[int], prices: list[float], stake: float = STAKE) -> dict[str, Any]:
+    """Spend the stake evenly on the opening coins. Cash left over stays in the bag."""
+    lots: dict[int, dict[str, float]] = {}
+    cash = float(stake)
+    picks = [index for index in held if 0 <= index < len(prices)]
+    if picks:
+        slice_cash = cash / len(picks)
+        for index in picks:
+            price = max(float(prices[index]), 1e-6)
+            lots[index] = {"coins": slice_cash / price, "cost": slice_cash}
+            cash -= slice_cash
+    return {"cash": cash, "lots": lots, "stake": float(stake)}
+
+
+def mark_bag(bag: dict[str, Any], prices: list[float]) -> float:
+    value = float(bag.get("cash") or 0.0)
+    for index, lot in (bag.get("lots") or {}).items():
+        if 0 <= index < len(prices):
+            value += float(lot["coins"]) * float(prices[index])
+    return value
+
+
+def trade_bag(bag: dict[str, Any], sold: int | None, bought: int | None, prices: list[float]) -> None:
+    """Sell one coin at the current price and spend the proceeds on another."""
+    lots = bag.setdefault("lots", {})
+    if sold is None or bought is None or sold == bought:
+        return
+    if not (0 <= sold < len(prices) and 0 <= bought < len(prices)):
+        return
+    lot = lots.pop(sold, None)
+    if lot is None or bought in lots:
+        if lot is not None:
+            lots[sold] = lot
+        return
+    proceeds = float(lot["coins"]) * max(float(prices[sold]), 1e-6)
+    bag["cash"] = float(bag.get("cash") or 0.0) + proceeds
+    price_in = max(float(prices[bought]), 1e-6)
+    lots[bought] = {"coins": proceeds / price_in, "cost": proceeds}
+    bag["cash"] -= proceeds
 
 
 def list_points(pool: list[dict[str, Any]], held: list[int]) -> float:
@@ -225,28 +298,34 @@ def revise_list(
     by_posts = sorted(outside, key=posts, reverse=True)
     if action == "raid":
         incoming = by_growth[-1]
+        sold = min(kept, key=growth)
     elif style == "second":
         incoming = by_growth[min(1, len(by_growth) - 1)]
+        sold = max(kept, key=growth)
     elif style == "crowd":
         incoming = by_posts[-1]
+        sold = max(kept, key=posts)
     elif style == "size":
         incoming = by_posts[0]
+        sold = min(kept, key=posts)
     elif style == "wander":
         incoming = by_growth[len(by_growth) // 2]
+        sold = sorted(kept, key=growth)[len(kept) // 2]
     elif action == "lurk":
         incoming = by_growth[min(1, len(by_growth) - 1)]
+        sold = min(kept, key=growth)
     else:
         incoming = by_growth[0]
-    weakest = min(kept, key=growth)
-    if style == "patient" and action != "raid" and growth(incoming) < growth(weakest) * 1.75:
+        sold = min(kept, key=growth)
+    if style == "patient" and action != "raid" and growth(incoming) < growth(sold) * 1.75:
         return kept, None
-    if style in ("hottest", "second") and action != "raid" and growth(incoming) <= growth(weakest):
+    if style == "hottest" and action != "raid" and growth(incoming) <= growth(sold):
         return kept, None
-    if incoming == weakest:
+    if incoming == sold:
         return kept, None
     nxt = list(kept)
-    nxt[nxt.index(weakest)] = incoming
-    return nxt, (weakest, incoming)
+    nxt[nxt.index(sold)] = incoming
+    return nxt, (sold, incoming)
 
 
 def _trend_posts(uri: str) -> list[dict[str, Any]]:
@@ -427,12 +506,146 @@ def news_stories(posts: list[dict[str, Any]], now: datetime | None = None) -> li
     return scored
 
 
-class LiveFeed:
-    """Crypto headlines from public Bluesky. Faster stories are worth more."""
+def _money(text: Any) -> float:
+    digits = re.sub(r"[^0-9.]", "", str(text or ""))
+    try:
+        return float(digits) if digits else 0.0
+    except ValueError:
+        return 0.0
 
-    source = "bsky"
+
+def _usd_change(data: dict[str, Any]) -> float:
+    change = data.get("price_change_percentage_24h") or {}
+    if isinstance(change, dict):
+        try:
+            return float(change.get("usd") or 0.0)
+        except (TypeError, ValueError):
+            return 0.0
+    try:
+        return float(change)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _get_json(url: str) -> Any:
+    request = urllib.request.Request(
+        url,
+        headers={"Accept": "application/json", "User-Agent": "cadence-trade-royale"},
+    )
+    with urllib.request.urlopen(request, timeout=20) as response:
+        return json.load(response)
+
+
+def _price_quotes(symbols: list[str] | None = None) -> dict[str, float]:
+    url = BINANCE_PRICE
+    if symbols:
+        encoded = urllib.parse.quote(json.dumps(symbols, separators=(",", ":")))
+        url = f"{BINANCE_PRICE}?symbols={encoded}"
+    payload = _get_json(url)
+    quotes: dict[str, float] = {}
+    if not isinstance(payload, list):
+        return quotes
+    for item in payload:
+        if not isinstance(item, dict):
+            continue
+        try:
+            quotes[str(item.get("symbol") or "")] = float(item.get("price"))
+        except (TypeError, ValueError):
+            continue
+    return quotes
+
+
+def _levered(base: str) -> bool:
+    for tag in ("DOWN", "BULL", "BEAR", "UP"):
+        if base.endswith(tag) and len(base) > len(tag) + 2:
+            return True
+    return False
+
+
+def price_movers(payload: list[dict[str, Any]] | Any) -> list[dict[str, Any]]:
+    """Every priced USDT pair. Stables and leveraged tokens stay out.
+
+    `growth` starts at zero and later tracks the price change after the round opens.
+    """
+    rows: list[dict[str, Any]] = []
+    if not isinstance(payload, list):
+        return rows
+    for item in payload:
+        if not isinstance(item, dict):
+            continue
+        symbol = str(item.get("symbol") or "")
+        if not symbol.endswith("USDT"):
+            continue
+        base = symbol[:-4]
+        if not base or base in STABLES or _levered(base):
+            continue
+        try:
+            day = float(item.get("priceChangePercent"))
+            last = float(item.get("lastPrice"))
+            volume = float(item.get("quoteVolume") or 0)
+        except (TypeError, ValueError):
+            continue
+        if last <= 0:
+            continue
+        rows.append({
+            "symbol": symbol,
+            "title": base,
+            "growth": 0.0,
+            "day": round(day, 1),
+            "post_count": int(volume),
+            "status": "",
+            "open": last,
+            "last": last,
+            "category": "coin",
+            "sample": "",
+        })
+    rows.sort(key=lambda row: float(row["day"]), reverse=True)
+    return rows
+
+
+def visible_moves(board: list[dict[str, Any]], limit: int = SHOWN) -> list[dict[str, Any]]:
+    """The page lists the best live move first. The book the brains trade is larger."""
+    if any(abs(float(item.get("growth") or 0.0)) > 0 for item in board):
+        key = "growth"
+    else:
+        key = "day"
+    ordered = sorted(board, key=lambda item: float(item.get(key) or 0.0), reverse=True)
+    return ordered[:limit]
+
+
+def trending_coins(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    """Coins people are searching for, biggest daily move first."""
+    rows: list[dict[str, Any]] = []
+    for entry in payload.get("coins") or []:
+        item = entry.get("item") or {}
+        data = item.get("data") or {}
+        symbol = str(item.get("symbol") or "").upper()
+        name = str(item.get("name") or "").strip()
+        if not symbol:
+            continue
+        change = _usd_change(data)
+        title = f"{symbol} {name}" if name and name.upper() != symbol else symbol
+        rows.append({
+            "title": title,
+            "growth": round(change, 1),
+            "post_count": int(_money(data.get("total_volume"))),
+            "status": "24h",
+            "category": "coin",
+            "sample": "",
+        })
+    rows.sort(key=lambda row: float(row["growth"]), reverse=True)
+    return rows
+
+
+class LiveFeed:
+    """Live USDT prices. The score is the move after the round opens."""
+
+    source = "binance"
 
     def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._stop = False
+        self._thread: threading.Thread | None = None
         self._winners = dict(BEST)
         self._examples: dict[str, dict[str, list[dict[str, Any]]]] = {
             TIMELINE: defaultdict(list),
@@ -446,37 +659,101 @@ class LiveFeed:
         self._samples: dict[str, list[dict[str, Any]]] = {name: [] for name in ACTIONS}
         self._cursor = {name: 0 for name in ACTIONS}
         self.error: str | None = None
+        self._quote_error: str | None = None
+        self._quoted_at: float | None = None
         self.loaded = False
 
     def load(self) -> None:
         try:
-            posts = _crypto_news_posts()
+            payload = _get_json(BINANCE)
+            ordered = price_movers(payload)
         except Exception as exc:
             self.error = f"{type(exc).__name__}: {exc}"
             self.loaded = True
             return
-        ordered = news_stories(posts)[:POOL_SIZE]
         if len(ordered) < 4:
-            self.error = "not enough crypto news"
+            self.error = "not enough coins on the book"
             self.loaded = True
             return
         self._winners = dict(BEST)
         self._titles[VIRAL] = str(ordered[0]["title"])
         self._titles[TIMELINE] = str(ordered[-1]["title"])
-        self._board = [
-            {
+        board = []
+        for index, story in enumerate(ordered):
+            board.append({
                 "id": index,
+                "symbol": story["symbol"],
                 "title": str(story["title"]),
-                "growth": float(story["growth"]),
+                "growth": 0.0,
+                "day": float(story["day"]),
                 "post_count": int(story["post_count"]),
-                "status": story["status"],
-                "category": "crypto",
+                "status": "",
+                "open": float(story["open"]),
+                "last": float(story["last"]),
+                "category": "coin",
                 "sample": "",
-            }
-            for index, story in enumerate(ordered)
-        ]
+            })
+        with self._lock:
+            self._board = board
         self.loaded = True
         self.error = None
+        self._quote_error = None
+        self._quoted_at = time.time()
+        self._ensure_poll()
+
+    def mark_open(self) -> None:
+        """Start profit from the price on the book right now."""
+        with self._lock:
+            for item in self._board:
+                last = float(item.get("last") or 0.0)
+                if last <= 0:
+                    continue
+                item["open"] = last
+                item["growth"] = 0.0
+
+    def book(self) -> list[dict[str, Any]]:
+        with self._lock:
+            return [dict(item) for item in self._board]
+
+    def poll(self) -> None:
+        with self._lock:
+            if not any(item.get("symbol") for item in self._board):
+                return
+        try:
+            quoted = _price_quotes()
+        except Exception as exc:
+            with self._lock:
+                self._quote_error = type(exc).__name__
+            return
+        if not quoted:
+            with self._lock:
+                self._quote_error = "no prices"
+            return
+        with self._lock:
+            self._quote_error = None
+            self._quoted_at = time.time()
+            for item in self._board:
+                last = quoted.get(str(item.get("symbol") or ""))
+                if not last:
+                    continue
+                item["last"] = last
+                open_px = float(item.get("open") or last)
+                item["growth"] = round((last / open_px - 1.0) * 100.0, 2)
+
+    def _ensure_poll(self) -> None:
+        if self._thread and self._thread.is_alive():
+            return
+        self._stop = False
+        self._thread = threading.Thread(target=self._poll_loop, name="prices", daemon=True)
+        self._thread.start()
+
+    def _poll_loop(self) -> None:
+        while not self._stop:
+            time.sleep(2.0)
+            try:
+                self.poll()
+            except Exception:
+                continue
 
     def winners(self) -> dict[str, str]:
         return dict(self._winners)
@@ -489,12 +766,29 @@ class LiveFeed:
         self._cursor[verb] = cursor + 1
         return bucket[cursor % len(bucket)]
 
+    def _feed_status(self) -> str:
+        if self.error:
+            return "down"
+        if not self.loaded:
+            return "reading"
+        quoted_at = self._quoted_at
+        if self._quote_error and quoted_at is None:
+            return "down"
+        if quoted_at is None or time.time() - quoted_at > 12:
+            return "stale"
+        return "live"
+
     def public(self) -> dict[str, Any]:
+        with self._lock:
+            board = [dict(item) for item in self._board]
         return {
-            "name": "Bluesky",
-            "note": "Crypto news only. Points are how fast each story is being shared.",
+            "name": "Binance",
+            "url": "https://www.binance.com/en/markets",
+            "status": self._feed_status(),
+            "note": "Every USDT pair. Profit is the move after the round opens.",
             "error": self.error,
-            "board": list(self._board),
+            "count": len(board),
+            "board": visible_moves(board),
             "slices": {
                 regime: {
                     "winner": self._winners.get(regime),

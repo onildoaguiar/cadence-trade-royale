@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Trending Royale</title>
+  <title>Trade Royale</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Syne:wght@700;800&display=swap" rel="stylesheet" />
@@ -12,26 +12,31 @@
 <body>
   <header class="top">
     <div class="brand">
-      <p class="kicker">A demo of <a href="https://github.com/muellerberndt/cadence" target="_blank" rel="noreferrer">Cadence</a></p>
-      <h1>Trending Royale</h1>
-      <p class="lede">Five crypto stories each. Faster lists score more.</p>
+      <p class="kicker">A <a href="https://github.com/muellerberndt/cadence" target="_blank" rel="noreferrer">Cadence</a> battle</p>
+      <h1>Trade Royale</h1>
+      <p class="lede">Six traders. $1,000 each. Profit wins.</p>
+    </div>
+    <div class="source" id="source" data-status="reading">
+      <span class="regime-kicker">source</span>
+      <strong><a id="source-link" href="https://www.binance.com/en/markets" target="_blank" rel="noreferrer">Binance</a></strong>
+      <span id="source-status"><i></i>reading</span>
     </div>
     <div class="regime" id="regime" data-regime="timeline">
-      <span class="regime-kicker">fastest</span>
-      <strong id="regime-name">reading trends</strong>
-      <span id="regime-pays">this trend pays</span>
+      <span class="regime-kicker">ahead</span>
+      <strong id="regime-name">the board</strong>
+      <span id="regime-pays">profit</span>
     </div>
     <div class="clock">
-      <span id="phase-label">raising</span>
+      <span id="phase-label">arming</span>
       <b id="moment">0</b>
-      <span class="clock-note">steps</span>
+      <span class="clock-note">hands</span>
     </div>
   </header>
 
   <main>
     <section class="board-wrap" id="board-wrap">
       <div class="feed-head">
-        <h2>Ranking</h2>
+        <h2>Board</h2>
         <p id="event"></p>
       </div>
       <ol class="ranking" id="ranking"></ol>
@@ -39,15 +44,20 @@
 
     <section class="side">
       <div class="feed-head">
-        <h2>Pool</h2>
-        <p>Crypto news. Read only.</p>
+        <h2>Book</h2>
+        <p id="pool-note">Every USDT pair. Profit is the score.</p>
+      </div>
+      <div class="best-now" id="best-now" data-side="up">
+        <span class="regime-kicker">best now</span>
+        <strong id="best-name">—</strong>
+        <span id="best-move"></span>
       </div>
       <ol class="trends" id="trends"></ol>
       <div class="chart-block">
         <div class="chart-key">
-          <span id="chart-who">Click a brain</span>
-          <span><i class="swatch live" id="chart-live"></i> its list</span>
-          <span><i class="swatch frozen"></i> stopped</span>
+          <span id="chart-who">Pick a trader</span>
+          <span><i class="swatch live" id="chart-live"></i> trading</span>
+          <span title="Same opening coins, never sold"><i class="swatch frozen"></i> held still</span>
         </div>
         <canvas id="chart" width="640" height="120"></canvas>
       </div>
@@ -57,15 +67,21 @@
   <footer>
     <div class="controls">
       <button type="button" id="play" disabled>Play</button>
-      <button type="button" id="round" disabled>Clear scores</button>
+      <button type="button" id="round" disabled>New round</button>
     </div>
     <div class="scores" id="scores">
-      <p><span>learning</span><b id="score-live">0</b></p>
-      <p><span>stopped</span><b id="score-frozen">0</b></p>
-      <p><span>random</span><b id="score-random">0</b></p>
+      <p title="Profit of the six bags that buy and sell">
+        <span>trading</span><b id="score-live">$0.00</b><em>six bags</em>
+      </p>
+      <p title="Same opening coins, never sold">
+        <span>held still</span><b id="score-frozen">$0.00</b><em>never sold</em>
+      </p>
+      <p title="Buys and sells picked at random">
+        <span>random</span><b id="score-random">$0.00</b><em>coin flips</em>
+      </p>
     </div>
     <section class="inspector" id="inspector">
-      <p class="inspector-empty">Click a brain.</p>
+      <p class="inspector-empty">Pick a trader.</p>
     </section>
   </footer>
 
